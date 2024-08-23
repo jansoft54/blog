@@ -33,7 +33,7 @@ const PersonIntroCard = ({ className }) => {
         }
       `}</style>
 
-      <div className={`  flex h-auto rounded-xl bg-gray-950 shadow-lg ${className}`}>
+      <div className={`  flex h-auto rounded-xl shadow-lg dark:bg-black ${className}`}>
         <Col className="gap-y-5  pt-6">
           <Row className="justify-start">
             <Image
@@ -42,7 +42,7 @@ const PersonIntroCard = ({ className }) => {
               alt="avatar"
               width={128}
               height={128}
-              className="aspect-square h-full w-full cursor-pointer	 rounded-md object-cover duration-200 hover:scale-[110%]"
+              className="aspect-square h-full w-full cursor-pointer	 rounded-md object-cover duration-500 hover:scale-[110%]"
             />
           </Row>
           <h2 className=" pl-3 text-3xl font-bold">Jan Hardtke</h2>
@@ -50,7 +50,8 @@ const PersonIntroCard = ({ className }) => {
           <Row className="divide-y divide-gray-200 pl-3 pt-0 dark:divide-gray-700">
             <Col>
               {yearsSinceDate('1999-10-27')} year old CS graduate student, trying to build stuff
-              others might find useful. Here to write about things i like, mostly ML stuff.
+              others might find useful. Here to write about things i like, mostly revolving around
+              ML.
               <hr className="mt-3 h-px border-t-0 bg-gray-200 dark:bg-gray-700" />
             </Col>
           </Row>
