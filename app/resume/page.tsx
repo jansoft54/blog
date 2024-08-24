@@ -24,7 +24,11 @@ const Resume = () => {
       <ResumeSection title="Education">
         <ul className=" pl-5">
           <li>
-            <strong>2020 - Present:</strong> B.Sc. in Computer Science, University of Bonn
+            <strong>10.2024 - present:</strong> M.Sc. in Computer Science, University of Bonn
+            <ul className="list-circle pl-5">
+              <li>Expected graduation: Autumn 2026</li>
+            </ul>
+            <strong>2020 - 10.2024:</strong> B.Sc. in Computer Science, University of Bonn
             <ul className="list-circle pl-5">
               <li>Expected graduation: Autumn 2024</li>
               <li>Bachelor's thesis: "Second Order Methods for Neural Network Optimization"</li>
@@ -122,7 +126,7 @@ export default function Page() {
 
   return (
     <>
-      <div className="grid grid-cols-3 gap-16">
+      <div className="grid grid-cols-3 items-start gap-16">
         <PersonIntroCard className="col-span-1" />
         <Resume />
       </div>
