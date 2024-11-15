@@ -18,7 +18,7 @@ const ResumeSection = ({ title, children }) => (
 
 const Resume = () => {
   return (
-    <div className="col-span-2 h-full overflow-auto rounded-lg bg-black p-6 shadow-lg">
+    <div className="col-span-2 h-full overflow-auto rounded-lg p-6 ">
       <h1 className="mb-4 text-3xl font-bold">Resume</h1>
 
       <ResumeSection title="Education">
@@ -30,8 +30,18 @@ const Resume = () => {
             </ul>
             <strong>2020 - 10.2024:</strong> B.Sc. in Computer Science, University of Bonn
             <ul className="list-circle pl-5">
-              <li>Expected graduation: Autumn 2024</li>
-              <li>Bachelor's thesis: "Second Order Methods for Neural Network Optimization"</li>
+              <li>
+                Bachelor's thesis:
+                <a
+                  className="italic text-primary-500 underline hover:text-primary-300"
+                  href={
+                    'https://www.dice.uni-bonn.de/hpca/documents/abschlussarbeiten/2024_bachelor_jan_niclas_hardtke.pdf'
+                  }
+                  target="_blank"
+                >
+                  "Second Order Methods for Neural Network Optimization"
+                </a>
+              </li>
             </ul>
           </li>
           <li>
@@ -52,7 +62,7 @@ const Resume = () => {
         </div>
         <div>
           <h3 className="font-semibold">
-            Founder and Developer, CraftOne / FH Applications UG (2021 - 2023)
+            Co-Founder and Developer, CraftOne / FH Applications UG (2021 - 2023)
           </h3>
           <ul className="pl-5">
             <li>
@@ -88,7 +98,6 @@ const Resume = () => {
           <li>DevOps: Docker, HashiCorp Nomad, HashiCorp Consul</li>
           <li>System Architecture: Microservices, Distributed Systems</li>
           <li>Machine Learning: Neural Network Optimization (academic focus)</li>
-          <li>Security: Secure messaging protocols (Matrix)</li>
         </ul>
       </ResumeSection>
 

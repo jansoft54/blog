@@ -34,7 +34,7 @@ const PersonIntroCard = ({ className }) => {
       `}</style>
 
       <div
-        className={`  sticky top-0 flex h-auto items-start rounded-xl shadow-lg dark:bg-black ${className}`}
+        className={`  sticky top-0 flex h-auto items-start rounded-xl  dark:bg-black ${className}`}
       >
         <Col className="gap-y-5  pt-6">
           <Row className="justify-start">
