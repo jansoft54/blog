@@ -92,12 +92,25 @@ const Resume = () => {
 
       <ResumeSection title="Skills">
         <ul className=" pl-5">
-          <li>Programming Languages: TypeScript, Python, Golang</li>
-          <li>Web Technologies: React, Next.js, Tailwind CSS, GraphQL</li>
-          <li>Databases: MongoDB</li>
-          <li>DevOps: Docker, HashiCorp Nomad, HashiCorp Consul</li>
-          <li>System Architecture: Microservices, Distributed Systems</li>
-          <li>Machine Learning: Neural Network Optimization (academic focus)</li>
+          <li>
+            <strong>Programming Languages</strong>: TypeScript, Python, Java, Golang, C
+          </li>
+          <li>
+            <strong>Web Technologies</strong>: React, Next.js, Tailwind CSS, GraphQL, WebRTC
+          </li>
+          <li>
+            <strong>Backend Technologies</strong>: Nginx, GraphQL, HashiCorp Nomad, HashiCorp
+            Consul, Docker
+          </li>
+          <li>
+            <strong>Databases</strong>: MongoDB, PostgreSQL
+          </li>
+          <li>
+            <strong>Cloud Platforms</strong>: Long standing experience with AWS{' '}
+          </li>
+          <li>
+            <strong>DevOps</strong>: Docker, Gitlab CI/CD
+          </li>
         </ul>
       </ResumeSection>
 
@@ -108,9 +121,8 @@ const Resume = () => {
             communication platform using the Matrix protocol.
           </li>
           <li>
-            <strong>Website Editor with LLM Integration:</strong> Developed a cutting-edge website
-            editor that combines manual design capabilities with AI-driven suggestions and
-            automation.
+            <strong>Website Editor with LLM Integration:</strong> Developed a website editor that
+            combines manual design capabilities with AI-driven suggestions and automation.
           </li>
           <li>
             <strong>Custom Hosting Infrastructure:</strong> Built a scalable and resilient hosting
@@ -122,7 +134,7 @@ const Resume = () => {
       <ResumeSection title="Languages">
         <ul className=" pl-5">
           <li>German (native)</li>
-          <li>English (proficient)</li>
+          <li>English (fluent)</li>
         </ul>
       </ResumeSection>
     </div>

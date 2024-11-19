@@ -17,12 +17,20 @@ In this series, we will explore the key components of the transformer architectu
 Before explaining every bit of the transformer model in detail, we will take a quick step back and give a small Overview
 of the steps we will cover. The below [image](#transformer) describes the whole model very accuarctly.
 
-<img
-  id="transformer"
-  src="/static/images/blog/transformers00/transformer.png"
-  alt="Description of the image"
-  style={{ width: '40%', height: 'auto', 'margin-left': '30%' }}
-/>
+<figure style={{ width: '40%', margin: 'auto', paddingLeft: '0%' }}>
+  <img
+    id="transformer"
+    src="/static/images/blog/transformers00/transformer.png"
+    alt="Description of the image"
+    style={{ width: '100%', height: 'auto' }}
+  />
+  <figcaption style={{ textAlign: 'center', fontSize: '0.9rem', color: '#666' }}>
+    <a href="https://arxiv.org/abs/1706.03762" target="_blank" rel="noopener noreferrer">
+      Image source{' '}
+    </a>
+  </figcaption>
+</figure>
+
 As the original [transformer](#transformer) was designed as a sequence-to-sequence processing model,
 its primary application in the original paper was for translation tasks. The model takes two input
 sequences: a source sequence and a target sequence. While modern large language models (LLMs) have
@@ -127,12 +135,23 @@ The first block of the encoder is the **attention layer**, which is not only the
 
 ## Self-Attention
 
-<img
-  id="attention"
-  src="/static/images/blog/transformers00/attention.png"
-  alt="Description of the image"
-  style={{ width: '80%', height: 'auto', 'padding-left': '10%' }}
-/>
+<figure style={{ width: '80%', margin: 'auto', paddingLeft: '0%' }}>
+  <img
+    id="attention"
+    src="/static/images/blog/transformers00/attention.png"
+    alt="Description of the image"
+    style={{ width: '100%', height: 'auto' }}
+  />
+  <figcaption style={{ textAlign: 'center', fontSize: '0.9rem', color: '#666' }}>
+    <a
+      href="https://pub.towardsai.net/explaining-attention-in-transformers-from-the-encoder-point-of-view-5f8026634a34"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      Image source{' '}
+    </a>
+  </figcaption>
+</figure>
 The most important concept to understand in the Transformer architecture is the so-called
 **self-attention** mechanism. This mechanism establishes an "attendance" between tokens that are
 likely related to each other. It helps the model understand dependencies and relationships across a
@@ -160,12 +179,23 @@ $$
 \text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^\top}{\sqrt{d_{\text{model}}}}\right)V
 $$
 
-<img
-  id="token"
-  src="/static/images/blog/transformers00/atttention_weights.jpeg"
-  alt="Description of the image"
-  style={{ width: '100%', height: 'auto', 'padding-left': '0%' }}
-/>
+<figure style={{ width: '100%', margin: 'auto', paddingLeft: '0%' }}>
+  <img
+    id="token"
+    src="/static/images/blog/transformers00/atttention_weights.jpeg"
+    alt="Description of the image"
+    style={{ width: '100%', height: 'auto' }}
+  />
+  <figcaption style={{ textAlign: 'center', fontSize: '0.9rem', color: '#666' }}>
+    <a
+      href="https://medium.com/@amansinghalml_33304/llama-2-ec7d53cd4e04"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      Image source{' '}
+    </a>
+  </figcaption>
+</figure>
 
 The first step in the attention mechanism is the **matrix multiplication** $$QK^\top$$, which computes the relationships between query and key tokens.
 
@@ -310,12 +340,24 @@ $$
 Each of these heads independently performs self-attention. For every head, we use separate learnable projection matrices $$W^Q$$, $$W^K$$, and $$W^V$$.
 This allows each head to focus on different parts of the sequence or capture different relationships within the data.
 
-<img
-  id="head"
-  src="/static/images/blog/transformers00/head.png"
-  alt="Description of the image"
-  style={{ width: '100%', height: 'auto', 'padding-left': '0%' }}
-/>
+<figure style={{ width: '100%', margin: 'auto', paddingLeft: '0%' }}>
+  <img
+    id="head"
+    src="/static/images/blog/transformers00/head.png"
+    alt="Description of the image"
+    style={{ width: '100%', height: 'auto' }}
+  />
+  <figcaption style={{ textAlign: 'center', fontSize: '0.9rem', color: '#666' }}>
+    <a
+      href="https://ai.stackexchange.com/questions/45329/how-the-q-k-v-be-calculated-in-multi-head-attention"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      Image source{' '}
+    </a>
+  </figcaption>
+</figure>
+
 After performing self-attention for all $$h$$ heads, their outputs are concatenated back together, resulting in a matrix of shape $$(seq\_len, d_{\text{model}})$$.
 Finally, this concatenated matrix is projected back to the original embedding dimension using a final learnable matrix $$W_O$$, which is of shape $$(d_{\text{model}}, d_{\text{model}})$$.
 This can be summarized as follows:
@@ -336,12 +378,24 @@ which lies at the heart of the model. As this layer is where the decoder integra
 Now the **cross-attention** layer is where the decoder integrates the outputs of the encoder. Instead of performing self-attention solely on the target sequence, the decoder uses the encoder's outputs as the **keys** and **values** while the decoder's outputs from the previous layer serve as the **queries**.
 The primary goal of the cross-attention layer is to allow the decoder to focus on relevant parts of the input sequence (processed by the encoder) when generating each token of the output sequence.
 
-<img
-  id="cross"
-  src="/static/images/blog/transformers00/cross.png"
-  alt="Description of the image"
-  style={{ width: '100%', height: 'auto', 'padding-left': '0%' }}
-/>
+<figure style={{ width: '100%', margin: 'auto', paddingLeft: '0%' }}>
+  <img
+    id="cross"
+    src="/static/images/blog/transformers00/cross.png"
+    alt="Description of the image"
+    style={{ width: '100%', height: 'auto' }}
+  />
+  <figcaption style={{ textAlign: 'center', fontSize: '0.9rem', color: '#666' }}>
+    <a
+      href="https://toloka.ai/blog/transformer-architecture/"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      Image source{' '}
+    </a>
+  </figcaption>
+</figure>
+
 Therefore, in the **cross-attention layer**, we use the target embeddings as the **queries**, which
 attend to the source sequence embeddings (the **keys**). The attention mechanism computes the
 alignment between the source and target sequences. Using the calculated attention weights, we
