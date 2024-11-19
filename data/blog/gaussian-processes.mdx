@@ -45,9 +45,10 @@ $$
 $$
 
 Contour plots of the multivariate Gaussian distribution illustrate how $\Sigma$ affects the spread and orientation of the distribution.
-An example of such plots for different covariance matrices $\Sigma$ is shown in the figure below, demonstrating how the covariance influences the relationships between variables.
+An example of such plots for different covariance matrices $\Sigma$ is shown in the [figure](#multivariate) below, demonstrating how the covariance influences the relationships between variables.
 
     <img
+    id="multivariate"
     src="/static/images/blog/gaussian-process/multivariate.png"
     alt="Description of the image"
     style={{ width: '80%', height: 'auto',"padding-left":"10%" }}
@@ -113,9 +114,10 @@ $$
 p_X(x) = \int_y p_{X,Y}(x, y) \, dy = \int_y p_{X \mid Y}(x \mid y) p_Y(y) \, dy
 $$
 
-We can observe the differences between **conditioning** and **marginalization** in the figure below.
+We can observe the differences between **conditioning** and **marginalization** in the [figure](#cond) below.
 
 <img
+  id="cond"
   src="/static/images/blog/gaussian-process/cond.png"
   alt="Description of the image"
   style={{ width: '80%', height: 'auto', 'padding-left': '10%' }}
@@ -180,13 +182,14 @@ We have now covered the fundamentals of Gaussian processes.
 Next, we will extend our understanding to explore how Gaussian processes can be applied to solve regression tasks.
 
 <img
+  id="regression"
   src="/static/images/blog/gaussian-process/regression.png"
   alt="Description of the image"
   style={{ width: '80%', height: 'auto', 'padding-left': '10%' }}
 />
 Before diving into the technical details, our objective is clear: to model a distribution of
-functions that pass through our training points (as shown in the image above) and are therefore able
-to explain the distribution of our data.
+functions that pass through our training points ([as shown in the image above](#regression)) and are
+therefore able to explain the distribution of our data.
 
 Now, let $$ X $$ represent our test points and $$ Y $$ our training points. We aim to model the posterior distribution $$ X \mid Y $$, which answers the question:
 
@@ -223,7 +226,7 @@ $$
 
 This is the final distribution from which we can sample.
 It provides functions that pass through all points in $$ Y $$ and whose behavior for $$ X $$ is modeled by $$P_{X|Y}$$ (see image above).
-The figure also illustrates the **95% confidence interval** ($$2\sigma$$) and the mean function.
+The [figure](#regression) also illustrates the **95% confidence interval** ($$2\sigma$$) and the mean function.
 In practice, the mean function is often the most useful for regression or prediction tasks, as it provides the expected value of the output based on the given data.
 Getting the mean function as well as the $$2\sigma$$ confidence interval is really easy once we obtained the $$\mu$$ and $$\Sigma$$ for $$P_{X|Y}$$.
 We can just query them at the i-th point and get the respective $$\mu_i$$ and $$\Sigma_{ii} = \sigma_i$$. This wil result in
@@ -239,7 +242,7 @@ $$
 ]_{ii}
 $$
 
-Doing this for every point $$x_i$$ will result in the same figure we saw above.
+Doing this for every point $$x_i$$ will result in the same [figure](#regression) we saw above.
 
 So in summary, gaussian processes are a flexible framework for regression, where functions are modeled as samples from a multivariate normal distribution.
 A kernel function is used to compute the covariance matrix **$\Sigma_{XX}$**, which encodes the similarity between inputs.
