@@ -106,6 +106,9 @@ const Resume = () => {
             <strong>Databases</strong>: MongoDB, PostgreSQL
           </li>
           <li>
+            <strong>Analytics</strong>:PostHog, DataDog, Sentry, 
+          </li>
+          <li>
             <strong>Cloud Platforms</strong>: Long standing experience with AWS{' '}
           </li>
           <li>

@@ -5,3 +5,332 @@ tags: ['transformer', 'nlp', 'code']
 draft: false
 summary: A full implementation of the Transformer architecture in PyTorch, built entirely from scratch, designed specifically for use in a translation model.
 ---
+
+### Introduction
+
+In the previous post, we explored the inner workings of the Transformer architecture, dissecting its components and understanding how it forms the backbone of state-of-the-art models like BERT, GPT, and T5. Now, it's time to turn theory into practice.
+
+In this post, we will implement a full Transformer model from scratch in **PyTorch** and apply it to a **translation task**. Specifically, we will use the **WMT14 English-German (en-de)** dataset, a benchmark dataset widely used for machine translation tasks.
+
+### Dataset Preparation and Preprocessing
+
+To train our Transformer model, we need a dataset and a way to preprocess it into a format suitable for the model.
+In this example, we use the **WMT14 English-German (en-de)** dataset from the Hugging Face `datasets` library.
+This dataset is a common benchmark for machine translation tasks.
+
+---
+
+#### Loading the Dataset
+
+```python
+from transformers import AutoTokenizer
+from torch.utils.data import DataLoader
+from datasets import load_dataset
+
+dataset = load_dataset("wmt14", "de-en")
+
+dataset['train'] = dataset['train'].select(range(10000))
+dataset['test'] = dataset['test'].select(range(1000))
+dataset['validation'] = dataset['validation'].select(range(1000))
+
+dataset['train'] = dataset['train'].select(range(10000))
+dataset['test'] = dataset['test'].select(range(1000))
+dataset['validation'] = dataset['validation'].select(range(1000))
+```
+
+The dataset contains parallel sentences in German (de) and English (en), ideal for a translation model.
+
+#### Initializing the Tokenizer
+
+```python
+from transformers import AutoTokenizer
+
+tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
+src_seq_len = 128
+trg_seq_len = 128
+batch_size = 256
+
+def preprocess_function(examples):
+    inputs = [item["de"] for item in examples["translation"]]
+    targets = [item["en"] for item in examples["translation"]]
+    labels = [item["en"] for item in examples["translation"]]
+
+    model_inputs = tokenizer(
+        inputs,
+        padding="max_length",
+        truncation=True,
+        max_length=src_seq_len,
+        add_special_tokens=False
+    )
+    model_inputs['src_mask'] = model_inputs["attention_mask"]
+
+    with tokenizer.as_target_tokenizer():
+        targets = tokenizer(
+            targets,
+            padding="max_length",
+            truncation=True,
+            max_length=trg_seq_len,
+            add_special_tokens=True
+        )
+        labels = tokenizer(
+            labels,
+            padding="max_length",
+            truncation=True,
+            max_length=trg_seq_len,
+            add_special_tokens=True
+        )
+
+    model_inputs["target"] = targets["input_ids"]
+    model_inputs["target_mask"] = targets["attention_mask"]
+    model_inputs["labels"] = labels["input_ids"]
+
+    return model_inputs
+```
+
+#### Tokenization
+
+The `AutoTokenizer` from Hugging Face is initialized with the `bert-base-cased` model. This tokenizer is used to tokenize both the source (German) and target (English) sentences in the dataset. The tokenization process involves splitting the text into smaller units (tokens) and mapping them to numerical IDs that the model can process.
+
+---
+
+#### Handling Input and Output Sequences
+
+The preprocessing function performs the following key steps:
+
+1. **Extracting Text Data**:
+
+   - German sentences are extracted as inputs (source sequences).
+   - English sentences are extracted as targets (**decoder** inputs) and labels (ground truth for loss computation).
+
+2. **Tokenizing Source Sequences**:
+
+   - German sentences are tokenized and padded or truncated to a fixed length defined by `src_seq_len` (128 tokens in this case).
+   - Special tokens like `<START>` and `<END>` are not added for source sequences, as they are only required for the **decoder**.
+
+3. **Creating a Source Mask**:
+
+   - The tokenizer generates an attention mask (`src_mask`) for the source sequences. This mask indicates valid tokens (1) and padded tokens (0), which the model uses to ignore padding during computations.
+     This (`src_mask`) will be used in the attention layers of the **encoder**, such that real tokens won't attend to padding tokens.
+
+4. **Tokenizing Target Sequences**:
+
+   - English sentences are tokenized twice:
+     - **Targets**: Used as input to the **decoder** during training. Special tokens like `<START>` and `<END>` are added.
+     - **Labels**: Used for loss computation. These represent the expected output tokens for the **decoder**.
+
+5. **Creating a Target Mask**:
+
+   - The tokenizer generates an attention mask (`target_mask`) for the target sequences, similar to the source mask, to handle padding effectively.
+     Here the (`target_mask`) serves the same purpose as the (`src_mask`) in the **decoder**, it will be used in the attention layers of the **decoder**, to mask out padding tokens.
+
+## The Translation Model
+
+Below, we describe the translation model, which builds upon the core principles of the Transformer architecture.
+This model incorporates the fundamental components of the Transformer while effectively handling **padding** and the **causal mask** required for cross-attention.
+The architecture processes the input sequences by first preparing them with appropriate masks and then passing them through the **encoder** and **decoder** components.
+
+```python
+class TranslationModel(nn.Module):
+  def __init__(self,vocab_size,d_model,src_seq_len,trg_seq_len):
+    super(TranslationModel, self).__init__()
+    self.src_seq_len = src_seq_len
+    self.trg_seq_len = trg_seq_len
+
+    self.encoder = Encoder(d_model=d_model,)
+    self.decoder = Decoder(d_model=d_model,)
+
+    self.embedding_src = nn.Embedding(vocab_size,d_model)
+    self.embedding_tgt = nn.Embedding(vocab_size,d_model)
+
+    self.positional_encoding_src = nn.Embedding(src_seq_len,d_model)
+    self.positional_encoding_tgt = nn.Embedding(trg_seq_len,d_model)
+
+    self.src_pos = torch.arange(0,src_seq_len).unsqueeze(0).to(device)
+    self.trg_pos = torch.arange(0,trg_seq_len).unsqueeze(0).to(device)
+
+    self.ffn = nn.Linear(d_model,vocab_size)
+
+  def forward(self,src,tgt,src_padding_mask,tgt_padding_mask):
+
+    src_padding_mask = src_padding_mask.unsqueeze(1).repeat(1, self.src_seq_len, 1)
+    tgt_padding_mask = tgt_padding_mask.unsqueeze(1).repeat(1, self.trg_seq_len, 1)
+    tgt_causal_mask = torch.tril(torch.ones_like(tgt_padding_mask)).to(device)
+
+
+
+    src_embed = self.embedding_src(src) + self.positional_encoding_src(self.src_pos)
+    tgt_embed = self.embedding_tgt(tgt) + self.positional_encoding_tgt(self.trg_pos)
+
+    enc_out = self.encoder(src_embed,src_padding_mask)
+    dec_out = self.decoder(tgt = tgt_embed,
+                           memory=enc_out,
+                           tgt_padding_mask = tgt_padding_mask,
+                           tgt_causal_mask = tgt_causal_mask,
+                           memory_padding_mask = src_padding_mask)
+
+    return self.ffn(dec_out)
+```
+
+As you can see, the first step in the model's design is the initialization of **embedding layers**, which hold the embeddings for the tokenized sequences.
+These embeddings represent each token as a dense vector in a high-dimensional space, providing the model with a numerical representation of the input.
+
+In addition to the token embeddings, the model initializes two embedding layers for **positional encoding**.
+Unlike the fixed sinusoidal encoding discussed in the previous post, this implementation uses **learnable positional encodings**.
+This approach is more flexible, allowing the model to adapt the positional information to the specific dataset and task during training.
+Empirical evidence shows that learnable positional encodings often lead to better performance compared to fixed encodings.
+
+In the `_forward_` method, three masks are created to handle the input sequences. The `src_padding_mask` ensures the encoder ignores padding tokens in the source sequence. Similarly, the `tgt_padding_mask` prevents the decoder from processing padding tokens in the target sequence.
+The `tgt_causal_mask` enforces causality in the decoder, ensuring tokens only attend to earlier tokens during prediction.
+
+```python
+  src_padding_mask = src_padding_mask.unsqueeze(1).repeat(1, self.src_seq_len, 1)
+  tgt_padding_mask = tgt_padding_mask.unsqueeze(1).repeat(1, self.trg_seq_len, 1)
+  tgt_causal_mask = torch.tril(torch.ones_like(tgt_padding_mask)).to(device)
+```
+
+What we do here is transform the **src_padding_mask** and **tgt_padding_mask** from 1D arrays into **matrix masks**. Since the tokenizer only creates 1D arrays, we need to expand them into a matrix form to use them effectively in the attention layer. This transformation is achieved by stacking each 1D array `self.src_seq_len` times, ensuring that padding tokens are ignored during attention calculations.
+The same process is applied to the **tgt_padding_mask**.
+For the **cross-attention layer**, we generate the **causal mask**. This mask enforces causality by ensuring that tokens can only attend to themselves or tokens that came before them.
+
+After preparing the masks, we proceed to retrieve the embeddings for both the source and target sequences.
+These embeddings are combined with positional encodings to inject positional information into the token representations. This step ensures the model understands the order of tokens within the sequences.
+Once the source embeddings are ready, they are passed into the **encoder**, where the input sequence is processed and contextualized. The output of the encoder is then used as input to the **decoder**, which generates the output sequence.
+With this general understanding, we will now take a closer look at the architecture of the **encoder**.
+
+## Encoder
+
+Below is the architecture of the **Encoder**, which is composed of multiple **EncoderBlocks**. The **Encoder** class itself is straightforward—it initializes $$n$$ **EncoderBlocks** and feeds the output of one block into the next in sequence.
+
+```python
+class EncoderBlock(nn.Module):
+  def __init__(self,d_model=256,heads=4,hidden=1024,dropout=0.1):
+    super(EncoderBlock, self).__init__()
+
+
+    self.multi_head_attention = MultiHeadAttention(heads=heads,d_model=d_model)
+    self.norm1 = nn.LayerNorm(d_model)
+    self.norm2 = nn.LayerNorm(d_model)
+    self.mlp = nn.Sequential(nn.Linear(d_model,hidden),
+                             nn.GELU(),
+                             nn.Linear(hidden,d_model,
+                             nn.Dropout(dropout)
+                             ))
+
+  def forward(self,src,mask):
+    att_output = self.multi_head_attention(src,src,src,mask)
+    skip_con = att_output + src
+    norm_output = self.norm1(skip_con)
+    mlp_out = self.mlp(norm_output)
+    return self.norm2(mlp_out + norm_output)
+
+
+class Encoder(nn.Module):
+  def __init__(self,num_layers=6,d_model=256,heads=4,hidden=1024):
+      super(Encoder, self).__init__()
+      self.layers = nn.ModuleList([EncoderBlock(d_model=d_model,heads=heads,hidden=hidden) for i in range(num_layers)])
+
+  def forward(self,src,mask):
+    for layer in self.layers:
+      src = layer(src,mask)
+    return src
+```
+
+The interesting part of the encoder lies in the **EncoderBlock**. Here, the source sequence is passed as **Queries**, **Keys**, and **Values** into the **MultiHeadAttention** block.
+Additionally, we pass the **src_padding_mask** to ensure that padding tokens are ignored during attention calculations.
+After computing the output of the **MultiHeadAttention** block, a **skip connection** is applied by adding the input back to the output.
+This result is then normalized using a **LayerNorm** to improve training stability.
+Next, the output is passed through a simple **Feed-Forward Network (FFN)**, which includes another skip connection and a **Dropout** layer for regularization.
+
+## Multi-Head Attention
+
+```python
+class MultiHeadAttention(nn.Module):
+  def __init__(self, heads=4,d_model=256):
+    super(MultiHeadAttention, self).__init__()
+    self.heads = heads
+    self.d_model = d_model
+    self.W_q = nn.Linear(d_model,d_model)
+    self.W_k = nn.Linear(d_model,d_model)
+    self.W_v = nn.Linear(d_model,d_model)
+
+    self.W_o = nn.Linear(d_model,d_model)
+
+  def forward(self, q,k,v,mask):
+    d_k = self.d_model // self.heads
+    q,k,v = self.W_q(q),self.W_k(k),self.W_v(v)
+
+    q = q.view(q.shape[0],q.shape[1],self.heads,-1).transpose(1,2) # (batch,h,seq_len,d_k)
+    k = k.view(k.shape[0],k.shape[1],self.heads,-1).transpose(1,2) # (batch,h,seq_len,d_k)
+    v = v.view(v.shape[0],v.shape[1],self.heads,-1).transpose(1,2) # (batch,h,seq_len,d_k)
+
+    res = torch.matmul(q,k.transpose(-2,-1))  /  math.sqrt(d_k)
+
+    if mask is not None:
+      mask = mask.unsqueeze(1)
+      res = torch.masked_fill(res,mask==0,float('-inf'))
+
+    attention = nn.functional.softmax(res,dim=-1)
+
+    # (batch,h,seq_len,d_k) -> (batch,seq_len,h,d_k) -> (batch,h,seq_len,d_model)
+    output = torch.matmul(attention,v).transpose(1,2).contiguous().view(q.shape[0],-1,self.d_model)
+    output = self.W_o(output)
+
+    return output
+```
+
+This implementation of **multi-head attention** closely follows the formulation outlined in the previous post.
+last post.
+
+```python
+    d_k = self.d_model // self.heads
+    q,k,v = self.W_q(q),self.W_k(k),self.W_v(v)
+```
+
+First, the embedding dimension for each head is calculated by dividing the model's embedding dimension by the number of heads. This is done to split the input into multiple smaller attention heads, allowing the model to focus on different aspects of the input simultaneously.
+Next, learnable **weight matrices** are applied to the input sequences to project them into the **Query (Q)**, **Key (K)**, and **Value (V)** spaces.
+
+```python
+    q = q.view(q.shape[0],q.shape[1],self.heads,-1).transpose(1,2) # (batch,h,seq_len,d_k)
+    k = k.view(k.shape[0],k.shape[1],self.heads,-1).transpose(1,2) # (batch,h,seq_len,d_k)
+    v = v.view(v.shape[0],v.shape[1],self.heads,-1).transpose(1,2) # (batch,h,seq_len,d_k)
+```
+
+Here we bring the tensor into the required shape, as they are of shape $$(batch,seq\_len,d_{\text{model}})$$
+and should be of shape $$(batch,h,seq\_len,d_k)$$, for multi head attention.
+
+```python
+    res = torch.matmul(q,k.transpose(-2,-1))  /  math.sqrt(d_k)
+
+    if mask is not None:
+      mask = mask.unsqueeze(1)
+      res = torch.masked_fill(res,mask==0,float('-inf'))
+```
+
+To compute the attention scores, we first calculate $$\frac{QK^T}{\sqrt{d_k}}$$.
+We then apply the mask to the attention scores. Padding tokens are handled by setting their corresponding positions in the attention mask to $$-\infty$$. This ensures that, when we apply the softmax function, those positions are effectively ignored.
+The formula for softmax is:
+
+$$
+\text{softmax}(x_i) = \frac{e^{x_i}}{\sum_{j} e^{x_j}}
+$$
+
+By setting the masked values to $$-\infty$$, their exponential becomes:
+
+$$
+e^{-\infty} = 0
+$$
+
+This means the contributions of these positions to the numerator and denominator of the softmax equation are completely removed.
+
+```python
+  attention = nn.functional.softmax(res,dim=-1)
+
+  # (batch,h,seq_len,d_k) -> (batch,seq_len,h,d_k) -> (batch,h,seq_len,d_model)
+  output = torch.matmul(attention,v).transpose(1,2).contiguous().view(q.shape[0],-1,self.d_model)
+  output = self.W_o(output)
+```
+
+After applying the mask, the next step is to apply the softmax function to each row of the attention matrix.
+Once the attention scores are multiplied with $$V$$, we handle the multiple heads by concatenating them. The tensor is reshaped from $$(\text{batch}, h, \text{seq\_len}, d_k)$$ back to $$(\text{batch}, \text{seq\_len}, d_{\text{model}})$$, restoring the original embedding dimension.
+
+Finally, the concatenated output is passed through the last weight matrix. This produces the final output of the attention layer, concluding its computations.
