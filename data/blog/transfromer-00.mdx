@@ -399,7 +399,18 @@ The primary goal of the cross-attention layer is to allow the decoder to focus o
 Therefore, in the **cross-attention layer**, we use the target embeddings as the **queries**, which
 attend to the source sequence embeddings (the **keys**). The attention mechanism computes the
 alignment between the source and target sequences. Using the calculated attention weights, we
-multiply this matrix by the **values** (i.e., the outputs of the encoder). This operation
+multiply this matrix by the **values** (i.e., the outputs of the encoder).
+Again, formulating this mathematically and with the target embeddings $$T$$ and encoder ouput $$S$$, we get
+
+$$
+\text{MultiHead}(Q, K, V) = \text{Concat}(\text{head}_1, \text{head}_2, \dots, \text{head}_h)W^O
+$$
+
+$$
+\text{where head}_i = \text{Attention}(TW^Q_i, SW^K_i, SW^V_i) = \text{Softmax}\left(\frac{Q_iK_i^\top}{\sqrt{d_k}}\right)V_i
+$$
+
+This operation
 accumulates information from the encoder, weighted by how much each target token attends to
 different parts of the source sequence. As usual, after this layer, we add the inputs of the layer
 to its output as a **skip connection**. Following this, we apply **normalization** to the result.

@@ -156,8 +156,6 @@ class TranslationModel(nn.Module):
     tgt_padding_mask = tgt_padding_mask.unsqueeze(1).repeat(1, self.trg_seq_len, 1)
     tgt_causal_mask = torch.tril(torch.ones_like(tgt_padding_mask)).to(device)
 
-
-
     src_embed = self.embedding_src(src) + self.positional_encoding_src(self.src_pos)
     tgt_embed = self.embedding_tgt(tgt) + self.positional_encoding_tgt(self.trg_pos)
 
@@ -205,8 +203,6 @@ Below is the architecture of the **Encoder**, which is composed of multiple **En
 class EncoderBlock(nn.Module):
   def __init__(self,d_model=256,heads=4,hidden=1024,dropout=0.1):
     super(EncoderBlock, self).__init__()
-
-
     self.multi_head_attention = MultiHeadAttention(heads=heads,d_model=d_model)
     self.norm1 = nn.LayerNorm(d_model)
     self.norm2 = nn.LayerNorm(d_model)
@@ -334,3 +330,184 @@ After applying the mask, the next step is to apply the softmax function to each 
 Once the attention scores are multiplied with $$V$$, we handle the multiple heads by concatenating them. The tensor is reshaped from $$(\text{batch}, h, \text{seq\_len}, d_k)$$ back to $$(\text{batch}, \text{seq\_len}, d_{\text{model}})$$, restoring the original embedding dimension.
 
 Finally, the concatenated output is passed through the last weight matrix. This produces the final output of the attention layer, concluding its computations.
+
+## Decoder
+
+Now that we have an understanding of the **encoder**, we turn our attention to the **decoder**. The decoder shares many similarities with the encoder but introduces two key distinctions.
+The first is the application of the **causal mask** in addition to the padding mask.
+The second is the inclusion of the **cross-attention layer**. This layer allows the decoder to attend to the encoder's outputs,
+
+```python
+
+class DecoderBlock(nn.Module):
+  def __init__(self,d_model=256,heads=4,hidden=1024,dropout=0.1):
+    super(DecoderBlock, self).__init__()
+    self.masked_multi_head_attention = MultiHeadAttention(heads=heads,d_model=d_model)
+    self.cross_multi_head_attention = MultiHeadAttention(heads=heads,d_model=d_model)
+
+    self.norm1 = nn.LayerNorm(d_model)
+    self.norm2 = nn.LayerNorm(d_model)
+    self.norm3 = nn.LayerNorm(d_model)
+
+    self.mlp = nn.Sequential(nn.Linear(d_model,hidden),
+                             nn.GELU(),
+                             nn.Linear(hidden,d_model),
+                             nn.Dropout(dropout))
+
+  def forward(self,tgt,memory,tgt_padding_mask,tgt_causal_mask,memory_padding_mask):
+    tgt_padding_mask = (tgt_causal_mask & tgt_padding_mask).int()
+
+    att_output = self.masked_multi_head_attention(tgt,tgt,tgt,tgt_padding_mask)
+    norm_output = self.norm1(att_output + tgt )
+    cross_attn_output = self.cross_multi_head_attention(norm_output,memory,memory,memory_padding_mask)
+    norm_output = self.norm2(cross_attn_output + norm_output)
+    mlp_out = self.mlp(norm_output)
+    return self.norm3(mlp_out + norm_output)
+
+class Decoder(nn.Module):
+  def __init__(self,num_layers=6,d_model=256,heads=4,hidden=1024):
+      super(Decoder, self).__init__()
+      self.layers = nn.ModuleList([DecoderBlock(d_model=d_model,heads=heads,hidden=hidden) for i in range(num_layers)])
+
+  def forward(self,tgt,memory,tgt_padding_mask,tgt_causal_mask,memory_padding_mask):
+    for layer in self.layers:
+      tgt = layer(tgt,memory,tgt_padding_mask,tgt_causal_mask,memory_padding_mask)
+    return tgt
+```
+
+The **Decoder** class assembles multiple **DecoderBlocks** and passes them the respective masks required for the attention mechanisms.
+Along with the target padding mask and causal mask, the decoder requires the memory (encoder output) and memory_padding_mask (source padding mask).
+In the **DecoderBlock**, the target padding mask is combined with the causal mask to ensure that tokens in the target sequence cannot attend to padding tokens or tokens that come after them in the sequence.
+This combined mask is applied to the target tokens, which are then fed into the first attention block.
+he output of this block is processed using a skip connection, followed by a LayerNorm to stabilize training.
+Next, the cross-attention is computed. In this step, the target tokens (queries) attend to the encoder outputs (keys) and aggregate information from the encoder outputs (values) based on the attention mechanism.
+To ensure proper operation, the memory_padding_mask is applied so that padding tokens in the encoder outputs are ignored.
+After that the architecture of the decoder is same as the encoders.
+
+## Training loop
+
+```python
+
+warmup = 10
+lr = 2.5e-4
+min_lr = 1e-6
+
+class InverseSquareRootLR(torch.optim.lr_scheduler._LRScheduler):
+    def __init__(self, optimizer, warmup_steps, init_lr, min_lr=1e-9, last_epoch=-1):
+        self.warmup_steps = warmup_steps
+        self.init_lr = init_lr
+        self.min_lr = min_lr
+        super(InverseSquareRootLR, self).__init__(optimizer, last_epoch)
+
+    def get_lr(self):
+        step = self.last_epoch + 1
+        if step < self.warmup_steps:
+            lr = self.init_lr * (step / self.warmup_steps)
+        else:
+            lr = self.init_lr * math.sqrt(self.warmup_steps / step)
+
+        lr = max(lr, self.min_lr)
+
+        return [lr for _ in self.base_lrs]
+
+epochs = 100
+model = TranslationModel(vocab_size=tokenizer.vocab_size,d_model=512,src_seq_len=src_seq_len,trg_seq_len=trg_seq_len)
+model.to(device)
+optim = torch.optim.AdamW(model.parameters(),lr=lr,betas=(0.9, 0.98))
+lr_scheduler = InverseSquareRootLR(optim,warmup,lr,min_lr=min_lr)
+loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
+for epoch in range(epochs):
+    for batch in train_dataloader:
+        src = batch["input_ids"].to(device)
+        src_attention_mask = batch["src_mask"].to(device)
+        tgt = batch["target"].to(device)
+        tgt_attention_mask = batch["target_mask"].to(device)
+
+        labels = batch["labels"].to(device)[:,1:]
+
+        pad_tokens = torch.full((labels.shape[0], 1), tokenizer.pad_token_id, dtype=tgt.dtype).to(device)
+        labels = torch.cat((labels, pad_tokens), dim=-1)
+        output = model(src,tgt,src_attention_mask,tgt_attention_mask)
+
+        output = output.view(-1,output.shape[-1])
+        labels = labels.view(-1)
+
+        loss = loss_fn(output,labels)
+        optim.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
+        optim.step()
+        lr_scheduler.step()
+
+    print(loss)
+
+```
+
+Now lets first look at the model initialization code
+
+```python
+epochs = 100
+model = TranslationModel(vocab_size=tokenizer.vocab_size,d_model=512,src_seq_len=src_seq_len,trg_seq_len=trg_seq_len)
+model.to(device)
+optim = torch.optim.AdamW(model.parameters(),lr=lr,betas=(0.9, 0.98))
+lr_scheduler = InverseSquareRootLR(optim,warmup,lr,min_lr=min_lr)
+loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
+```
+
+In this step, we initialize the model, set up the optimizer, and define the loss function. The loss function used is **CrossEntropyLoss**, which is commonly employed for sequence-to-sequence tasks. CrossEntropyLoss is mathematically defined as:
+
+$$
+\text{CrossEntropyLoss}(y, \hat{y}) = - \frac{1}{N} \sum_{i=1}^N \sum_{j=1}^C y_{ij} \log(\hat{y}_{ij})
+$$
+
+Here:
+
+- $$y$$ represents the true distribution (one-hot encoded ground truth).
+- $$\hat{y}$$ represents the predicted probability distribution from the model.
+- $$N$$ is the number of samples in the batch.
+- $$C$$ is the number of classes (vocabulary size in this case).
+
+This loss function calculates the negative log likelihood of the correct class, weighted by the true distribution. It is averaged over all tokens in the batch, penalizing predictions that deviate from the true class probabilities.
+The `ignore_index` parameter tells the CrossEntropyLoss to set probabilities $$\hat{y}_{ij}$$ to 0, where $$j=\text{pad_token_id}$$. This will exclude
+the padding values in the loss computation.
+
+Next, we adjust the shape of the label tokens to ensure they align correctly with the target tokens. Both the target tokens and the label tokens currently contain `<START>` and `<END>` tokens. However, for training, the labels need to be shifted one token to the left.
+
+This means the `<START>` token is removed from the labels, and a `<PAD>` token is added at the end to maintain the correct sequence length. This shift ensures that each label token corresponds to the prediction of the decoder for the previous target token.
+
+```python
+src = batch["input_ids"].to(device)
+src_attention_mask = batch["src_mask"].to(device)
+tgt = batch["target"].to(device)
+tgt_attention_mask = batch["target_mask"].to(device)
+labels = batch["labels"].to(device)[:,1:]
+
+pad_tokens = torch.full((labels.shape[0], 1), tokenizer.pad_token_id, dtype=tgt.dtype).to(device)
+labels = torch.cat((labels, pad_tokens), dim=-1)
+```
+
+We then feed in these inputs into the model.
+
+```python
+output = model(src,tgt,src_attention_mask,tgt_attention_mask)
+
+output = output.view(-1,output.shape[-1])
+labels = labels.view(-1)
+
+loss = loss_fn(output,labels)
+```
+
+After processing, the model produces an output tensor of shape $$(\text{batch}, \text{seq\_len}, \text{vocab\_size})$$.
+This tensor contains the prediction vectors for the entire vocabulary at each position in the sequence.
+These vectors do not represent probabilities yet, as the **CrossEntropyLoss** function internally applies a softmax operation to convert them into probabilities.
+For the **CrossEntropyLoss** to work with a batched case, it expects a 2D tensor as input.
+To satisfy this requirement, we reshape the output tensor into the shape $$(\text{batch} \times \text{seq\_len}, \text{vocab\_size})$$, effectively flattening the batch and sequence dimensions while keeping the vocabulary dimension intact.
+
+Similarly, the label tensor is reshaped to have the shape $$(\text{batch} \times \text{seq\_len})$$. This ensures that each label aligns correctly with the corresponding prediction vector for the loss calculation.
+
+Now lettings this run will train our model to translate german into english sentences.
+With this current configuration the model contains roughly 75M parameters.
+In the next post, we will explore how to adjust this architecture to recreate the well-known **Llama 3** foundational language model from Meta.
+While the current implementation of our Transformer adheres closely to its vanilla formulation, Llama 3 represents a state-of-the-art large language model (LLM) that builds on and extends the original Transformer design.
+We will delve into the architectural changes and optimizations that have been introduced since the original Transformer, examining how these innovations contribute to the exceptional performance of a model like Llama 3.
