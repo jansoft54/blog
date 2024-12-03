@@ -2,10 +2,15 @@ import Link from '@/components/Link'
 import Tag from '@/components/Tag'
 import siteMetadata from '@/data/siteMetadata'
 import { formatDate } from 'pliny/utils/formatDate'
-import NewsletterForm from 'pliny/ui/NewsletterForm'
-import Col from '@/components/Col'
 import PersonIntroCard from '@/components/PersonIntroCard'
-import Row from '@/components/Row'
+import EducationCard from '@/components/bentoGrid/EducationCard'
+import Experience from '@/components/bentoGrid/Experience'
+import Frontend from '@/components/bentoGrid/Frontend'
+import Backend from '@/components/bentoGrid/Backend'
+import Devops from '@/components/bentoGrid/Devops'
+import Database from '@/components/bentoGrid/Database'
+import Languages from '@/components/bentoGrid/Languages'
+import Cloud from '@/components/bentoGrid/Cloud'
 
 const MAX_DISPLAY = 4
 
@@ -88,6 +93,31 @@ export default function Home({ posts }) {
           )}
         </div>
       </div>
+      <div id="resume" className="mt-16 grid w-full grid-cols-4 grid-rows-1 gap-8">
+        <EducationCard />
+        <Experience />
+      </div>
+
+      <h2
+        id="skills"
+        className="mt-4 text-xl font-extrabold leading-9 tracking-tight text-gray-900 dark:text-gray-100 sm:text-xl sm:leading-10 md:text-3xl md:leading-14"
+      >
+        Skills & Experiences
+      </h2>
+      <div className="grid w-full grid-cols-3 grid-rows-1 gap-8">
+        <Frontend />
+        <Backend />
+        <Devops />
+        <Database />
+        <Languages />
+        <Cloud />
+      </div>
+      <h2
+        id="projects"
+        className="mt-4 text-xl font-extrabold leading-9 tracking-tight text-gray-900 dark:text-gray-100 sm:text-xl sm:leading-10 md:text-3xl md:leading-14"
+      >
+        Projects
+      </h2>
     </>
   )
 }

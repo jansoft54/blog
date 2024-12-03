@@ -15,6 +15,26 @@ module.exports = {
   darkMode: 'class',
   theme: {
     extend: {
+      animation: {
+        heightGrow: 'heightGrow 2s linear forwards',
+        fade: 'fadeIn .5s ease-in-out forwards',
+      },
+      keyframes: {
+        heightGrow: {
+          '0%': { height: '0', opacity: '0' },
+          '100%': { height: '100%', opacity: '1' }, // Set desired final height
+        },
+        fadeIn: {
+          '0%': {
+            opacity: 0,
+            transform: 'translateY(20px)',
+          },
+          '100%': {
+            opacity: 1,
+            transform: 'translateY(0)',
+          },
+        },
+      },
       lineHeight: {
         11: '2.75rem',
         12: '3rem',

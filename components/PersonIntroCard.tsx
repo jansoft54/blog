@@ -77,7 +77,9 @@ const PersonIntroCard = ({ className }) => {
           <Row className="pl-3">
             <Row className="items-center gap-2">
               <BriefcaseBusiness strokeWidth={1.5} />
-              <a className="text-sm text-primary-500">@Unemployed</a>
+              <a href="https://www.bwi.de/" className="text-sm text-primary-500">
+                @BWI
+              </a>
             </Row>
           </Row>
         </Col>

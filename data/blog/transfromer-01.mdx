@@ -469,7 +469,7 @@ Here:
 - $$C$$ is the number of classes (vocabulary size in this case).
 
 This loss function calculates the negative log likelihood of the correct class, weighted by the true distribution. It is averaged over all tokens in the batch, penalizing predictions that deviate from the true class probabilities.
-The `ignore_index` parameter tells the CrossEntropyLoss to set probabilities $$\hat{y}_{ij}$$ to 0, where $$j=\text{pad_token_id}$$. This will exclude
+The `ignore_index` parameter tells the CrossEntropyLoss to set probabilities $$\hat{y}_{ij}$$ to 0, where $$j= \text{pad\_token\_id}$$. This will exclude
 the padding values in the loss computation.
 
 Next, we adjust the shape of the label tokens to ensure they align correctly with the target tokens. Both the target tokens and the label tokens currently contain `<START>` and `<END>` tokens. However, for training, the labels need to be shifted one token to the left.
