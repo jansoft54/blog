@@ -1,15 +1,24 @@
 import React from 'react'
-import ResumeSection from '../ResumeSections'
+import TitleCard from '../TitleCard'
 import Row from '../Row'
 import Col from '../Col'
 import Image from 'next/image'
 
 export default function Experience() {
   return (
-    <ResumeSection title="Experience doing stuff" className={' col-span-2 row-span-1 h-full'}>
+    <TitleCard
+      title="Experience doing stuff"
+      className={' col-span-2 row-span-1 h-full'}
+      animProps={{
+        initial: { x: '30%', opacity: 0 },
+        whileInView: { x: 0, opacity: 1 },
+        viewport: { once: true, amount: 0 },
+        transition: { duration: 0.5, ease: 'easeIn' },
+      }}
+    >
       <Col className=" relative gap-2  dark:text-gray-400">
         <Row className="relative">
-          <Col className=" animate-fade  opacity-0  [animation-delay:800ms] [animation-duration:400ms]">
+          <Col className=" animate-fade  opacity-0  [animation-delay:1800ms] [animation-duration:400ms]">
             <Row className="items-start justify-start gap-4">
               <div className="flex w-16  shrink-0  justify-center">
                 <img className="p-1" src={'/static/images/bwi.png'} alt="bwi" />
@@ -22,7 +31,7 @@ export default function Experience() {
           </Col>
         </Row>
         <Row className="relative ">
-          <Col className=" animate-fade opacity-0  [animation-delay:400ms] [animation-duration:400ms]">
+          <Col className=" animate-fade opacity-0  [animation-delay:1400ms] [animation-duration:400ms]">
             <Row className="items-start justify-start gap-4">
               <div className="flex w-16  shrink-0  justify-center">
                 <div className="flex h-12 w-12  justify-center rounded-md bg-black">
@@ -46,7 +55,7 @@ export default function Experience() {
           </Col>
         </Row>
         <Row className="relative">
-          <Col className=" animate-fade  opacity-0  [animation-duration:400ms]">
+          <Col className=" animate-fade  opacity-0  [animation-delay:1000ms] [animation-duration:400ms]">
             <Row className="items-start justify-start gap-4">
               <div className="flex w-16 shrink-0 justify-center">
                 <img className="p-3" src={'/static/images/cebicon.jpeg'} alt="craftone" />
@@ -64,6 +73,6 @@ export default function Experience() {
           </Col>
         </Row>
       </Col>
-    </ResumeSection>
+    </TitleCard>
   )
 }

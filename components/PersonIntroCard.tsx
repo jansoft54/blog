@@ -1,3 +1,4 @@
+'use client'
 import React from 'react'
 import Image from '@/components/Image'
 import Row from './Row'
@@ -5,6 +6,8 @@ import { BriefcaseBusiness, GraduationCap } from 'lucide-react'
 import Col from './Col'
 import SocialIcon from './social-icons'
 import siteMetadata from '@/data/siteMetadata'
+import { motion } from 'framer-motion'
+
 function yearsSinceDate(pastDate: string): number {
   const past = new Date(pastDate)
   const now = new Date()
@@ -12,7 +15,7 @@ function yearsSinceDate(pastDate: string): number {
   const years = diffInMs / (1000 * 60 * 60 * 24 * 365.25)
   return Math.floor(years)
 }
-const PersonIntroCard = ({ className }) => {
+const PersonIntroCard = ({ className, animProps }) => {
   return (
     <>
       <style>{`
@@ -33,8 +36,9 @@ const PersonIntroCard = ({ className }) => {
         }
       `}</style>
 
-      <div
+      <motion.div
         className={`  sticky top-0 flex h-auto items-start rounded-xl  dark:bg-black ${className}`}
+        {...animProps}
       >
         <Col className="gap-y-5  pt-6">
           <Row className="justify-start">
@@ -83,7 +87,7 @@ const PersonIntroCard = ({ className }) => {
             </Row>
           </Row>
         </Col>
-      </div>
+      </motion.div>
     </>
   )
 }

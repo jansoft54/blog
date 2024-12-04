@@ -1,7 +1,7 @@
 import React from 'react'
-import Row from '../Row'
+import Row from '../../Row'
 import StackIcon from 'tech-stack-icons'
-import Col from '../Col'
+import Col from '../../Col'
 
 export default function TechIcon({ icon, headline, desc }) {
   return (

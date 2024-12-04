@@ -1,13 +1,22 @@
 import React from 'react'
-import ResumeSection from '../ResumeSections'
+import TitleCard from '../../TitleCard'
 import StackIcon from 'tech-stack-icons'
-import Row from '../Row'
-import Col from '../Col'
+import Row from '../../Row'
+import Col from '../../Col'
 import TechIcon from './TechIcon'
 
 export default function Frontend() {
   return (
-    <ResumeSection title="Frontend" className={' col-span-1 row-span-1 h-full'}>
+    <TitleCard
+      title="Frontend"
+      className={' z-0 col-span-1 row-span-1 h-full'}
+      animProps={{
+        initial: { x: '100%', opacity: 0 },
+        whileInView: { x: 0, opacity: 1 },
+        viewport: { once: true, amount: 0 },
+        transition: { duration: 0.5, delay: 0.5, ease: 'easeIn' },
+      }}
+    >
       <Col className="flex-wrap gap-3">
         <TechIcon
           icon={'reactjs'}
@@ -35,6 +44,6 @@ export default function Frontend() {
           desc={'A collection of customizable React components.'}
         />
       </Col>
-    </ResumeSection>
+    </TitleCard>
   )
 }
