@@ -64,30 +64,36 @@ export default function Home({ posts }) {
       >
         Projects
       </h2>
-      <div
-        className="mb-16 grid w-full grid-cols-2 grid-rows-1 gap-8"
-        style={{ gridTemplateRows: 'minmax(400px, 550px)' }}
-      >
+      <div className="grid w-full grid-cols-2 grid-rows-1 gap-8">
         <ProjectCard
+          link={''}
+          finished={true}
           title={'CraftOne'}
           desc={
             'CraftOne was a lightweight and user-friendly website builder optimized for high performance. It featured AI-guided design assistance powered by a LLM.'
           }
-          img={'/static/images/cebicon.jpeg'}
+          img={'/static/images/craftone.png'}
           stack={[
             { icon: 'nextjs2', name: 'NextJs' },
             { icon: 'reactjs', name: 'React' },
             { icon: 'typescript', name: 'Typescript' },
             { icon: 'tailwindcss', name: 'Tailwind' },
+            { icon: 'mongodb', name: 'MongoDB' },
           ]}
         />
         <ProjectCard
+          link={''}
+          finished={false}
           title={'ShipFaster'}
-          desc={
-            'CraftOne was a lightweight and user-friendly website builder optimized for high performance. It featured AI-guided design assistance powered by a LLM.'
-          }
-          img={'/static/images/cebicon.jpeg'}
-          stack={[]}
+          desc={' It featured AI-guided design assistance powered by a LLM.'}
+          img={'/static/images/shipfast.webp'}
+          stack={[
+            { icon: 'nextjs2', name: 'NextJs' },
+            { icon: 'reactjs', name: 'React' },
+            { icon: 'typescript', name: 'Typescript' },
+            { icon: 'tailwindcss', name: 'Tailwind' },
+            { icon: 'postgresql', name: 'PostgreSQL' },
+          ]}
         />
       </div>
     </>

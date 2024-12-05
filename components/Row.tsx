@@ -1,11 +1,13 @@
 import React from 'react'
-
-export default function Row({
-  className,
-  children,
-}: {
+type RowProps = {
   className?: string
   children: React.ReactNode
-}) {
-  return <div className={`flex flex-row ${className}`}>{children}</div>
+} & React.HTMLAttributes<HTMLDivElement>
+
+export default function Row({ className, children, ...args }: RowProps) {
+  return (
+    <div className={`flex flex-row ${className}`} {...args}>
+      {children}
+    </div>
+  )
 }

@@ -1,8 +1,9 @@
+'use client'
 import React from 'react'
 import TitleCard from '../TitleCard'
 import Row from '../Row'
 import Col from '../Col'
-import Image from 'next/image'
+import { motion } from 'framer-motion'
 
 export default function Experience() {
   return (
@@ -17,8 +18,14 @@ export default function Experience() {
       }}
     >
       <Col className=" relative gap-2  dark:text-gray-400">
-        <Row className="relative">
-          <Col className=" animate-fade  opacity-0  [animation-delay:1800ms] [animation-duration:400ms]">
+        <motion.div
+          className="relative"
+          initial={{ y: '30%', opacity: 0 }}
+          whileInView={{ y: 0, opacity: 1 }}
+          viewport={{ once: true, amount: 0 }}
+          transition={{ duration: 0.4, ease: 'easeIn', delay: 1.25 }}
+        >
+          <Col className=" animate-fade  opacity-0 ">
             <Row className="items-start justify-start gap-4">
               <div className="flex w-16  shrink-0  justify-center">
                 <img className="p-1" src={'/static/images/bwi.png'} alt="bwi" />
@@ -29,9 +36,15 @@ export default function Experience() {
               </Col>
             </Row>
           </Col>
-        </Row>
-        <Row className="relative ">
-          <Col className=" animate-fade opacity-0  [animation-delay:1400ms] [animation-duration:400ms]">
+        </motion.div>
+        <motion.div
+          className="relative "
+          initial={{ y: '30%', opacity: 0 }}
+          whileInView={{ y: 0, opacity: 1 }}
+          viewport={{ once: true, amount: 0 }}
+          transition={{ duration: 0.4, ease: 'easeIn', delay: 1 }}
+        >
+          <Col className=" animate-fade opacity-0">
             <Row className="items-start justify-start gap-4">
               <div className="flex w-16  shrink-0  justify-center">
                 <div className="flex h-12 w-12  justify-center rounded-md bg-black">
@@ -53,9 +66,15 @@ export default function Experience() {
               </Col>
             </Row>
           </Col>
-        </Row>
-        <Row className="relative">
-          <Col className=" animate-fade  opacity-0  [animation-delay:1000ms] [animation-duration:400ms]">
+        </motion.div>
+        <motion.div
+          className="relative"
+          initial={{ y: '30%', opacity: 0 }}
+          whileInView={{ y: 0, opacity: 1 }}
+          viewport={{ once: true, amount: 0 }}
+          transition={{ duration: 0.4, ease: 'easeIn', delay: 0.75 }}
+        >
+          <Col className=" animate-fade  opacity-0">
             <Row className="items-start justify-start gap-4">
               <div className="flex w-16 shrink-0 justify-center">
                 <img className="p-3" src={'/static/images/cebicon.jpeg'} alt="craftone" />
@@ -71,7 +90,7 @@ export default function Experience() {
               </Col>
             </Row>
           </Col>
-        </Row>
+        </motion.div>
       </Col>
     </TitleCard>
   )

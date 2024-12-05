@@ -13,7 +13,7 @@ export default function Frontend() {
       animProps={{
         initial: { x: '100%', opacity: 0 },
         whileInView: { x: 0, opacity: 1 },
-        viewport: { once: true, amount: 0 },
+        viewport: { once: true, amount: 0.3 },
         transition: { duration: 0.5, delay: 0.5, ease: 'easeIn' },
       }}
     >
