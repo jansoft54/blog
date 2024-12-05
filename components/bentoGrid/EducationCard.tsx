@@ -53,7 +53,7 @@ export default function EducationCard() {
         </Row>
         <Row className="relative ">
           <motion.div
-            className="animate-fade relative  mt-[5px] opacity-0"
+            className="relative  mt-[5px] "
             initial={{ y: '30%', opacity: 0 }}
             whileInView={{ y: 0, opacity: 1 }}
             viewport={{ once: true, amount: 0 }}
@@ -86,7 +86,7 @@ export default function EducationCard() {
         </Row>
         <Row className="relative">
           <motion.div
-            className="animate-fade relative  mt-[5px] opacity-0"
+            className="relative  mt-[5px] "
             initial={{ y: '30%', opacity: 0 }}
             whileInView={{ y: 0, opacity: 1 }}
             viewport={{ once: true, amount: 0 }}

@@ -1,7 +1,9 @@
 'use client'
+
 import clsx from 'clsx'
 import React from 'react'
 import { motion } from 'framer-motion'
+import { MotionProps } from 'framer-motion'
 
 const TitleCard = ({
   title,
@@ -12,7 +14,7 @@ const TitleCard = ({
   title: string
   children: React.ReactNode
   className: string
-  animProps?: any
+  animProps?: MotionProps
 }) => (
   <motion.div
     className={clsx(
