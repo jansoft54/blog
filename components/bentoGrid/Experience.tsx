@@ -17,7 +17,7 @@ export default function Experience() {
         transition: { duration: 0.5, ease: 'easeIn' },
       }}
     >
-      <Col className=" relative gap-2  dark:text-gray-400">
+      <Col className=" relative gap-6  dark:text-gray-400">
         <motion.div
           className="relative"
           initial={{ y: '30%', opacity: 0 }}
