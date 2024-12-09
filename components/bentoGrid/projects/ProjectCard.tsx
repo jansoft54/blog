@@ -5,7 +5,7 @@ import Link from 'next/link'
 import React from 'react'
 import StackIcon from 'tech-stack-icons'
 import { motion } from 'framer-motion'
-import { useMediaQuery } from 'app/util/util'
+import { useMediaQuery } from '@/components/util/util'
 
 export default function ProjectCard({ title, desc, img, stack, finished, link }) {
   const isMobile = useMediaQuery('(max-width: 768px)')
