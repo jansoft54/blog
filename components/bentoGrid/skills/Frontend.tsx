@@ -8,7 +8,6 @@ import { useMediaQuery } from '@/components/util/util'
 
 export default function Frontend() {
   const isMobile = useMediaQuery('(max-width: 768px)')
-
   return (
     <TitleCard
       title="Frontend"

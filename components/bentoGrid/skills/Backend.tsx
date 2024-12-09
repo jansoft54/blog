@@ -7,6 +7,7 @@ import { useMediaQuery } from '@/components/util/util'
 
 export default function Backend() {
   const isMobile = useMediaQuery('(max-width: 768px)')
+  console.log(isMobile)
 
   return (
     <TitleCard

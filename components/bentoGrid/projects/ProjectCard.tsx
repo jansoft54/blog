@@ -9,7 +9,7 @@ import { useMediaQuery } from '@/components/util/util'
 
 export default function ProjectCard({ title, desc, img, stack, finished, link }) {
   const isMobile = useMediaQuery('(max-width: 768px)')
-
+  console.log('hi' + isMobile)
   return (
     <motion.div
       className={
