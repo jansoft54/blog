@@ -2,18 +2,23 @@ import React from 'react'
 import TitleCard from '../../TitleCard'
 import Col from '../../Col'
 import TechIcon from './TechIcon'
+import { isMobile } from 'util/util'
 
 export default function Backend() {
   return (
     <TitleCard
       title="Backend"
       className={' z-30 col-span-1 row-span-1 h-full'}
-      animProps={{
-        initial: { y: '10%', opacity: 0 },
-        whileInView: { y: 0, opacity: 1 },
-        viewport: { once: true, amount: 0.3 },
-        transition: { duration: 0.3, delay: 0, ease: 'easeIn' },
-      }}
+      animProps={
+        !isMobile
+          ? {
+              initial: { y: '10%', opacity: 0 },
+              whileInView: { y: 0, opacity: 1 },
+              viewport: { once: true, amount: 0.3 },
+              transition: { duration: 0.3, delay: 0, ease: 'easeIn' },
+            }
+          : {}
+      }
     >
       <Col className="flex-wrap gap-3">
         <TechIcon

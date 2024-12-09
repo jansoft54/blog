@@ -5,6 +5,7 @@ import Link from 'next/link'
 import React from 'react'
 import StackIcon from 'tech-stack-icons'
 import { motion } from 'framer-motion'
+import { isMobile } from 'util/util'
 
 export default function ProjectCard({ title, desc, img, stack, finished, link }) {
   return (
@@ -12,10 +13,10 @@ export default function ProjectCard({ title, desc, img, stack, finished, link })
       className={
         'col-span-1 row-span-1 h-full rounded-2xl shadow-lg duration-500 hover:scale-105 dark:bg-zinc-900'
       }
-      initial={{ y: '30%', opacity: 0 }}
-      whileInView={{ y: 0, opacity: 1 }}
-      viewport={{ once: true, amount: 0.3 }}
-      transition={{ duration: 0.4, ease: 'easeIn' }}
+      initial={isMobile ? {} : { y: '30%', opacity: 0 }}
+      whileInView={isMobile ? {} : { y: 0, opacity: 1 }}
+      viewport={isMobile ? {} : { once: true, amount: 0.3 }}
+      transition={isMobile ? {} : { duration: 0.4, ease: 'easeIn' }}
     >
       <Col className="h-full">
         <div className="overflow-clip rounded-tl-2xl" style={{ height: '300px' }}>
