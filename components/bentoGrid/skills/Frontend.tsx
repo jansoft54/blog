@@ -3,9 +3,11 @@ import TitleCard from '../../TitleCard'
 
 import Col from '../../Col'
 import TechIcon from './TechIcon'
-import { isMobile } from 'util/util'
+import { useMediaQuery } from 'util/util'
 
 export default function Frontend() {
+  const isMobile = useMediaQuery('(max-width: 768px)')
+
   return (
     <TitleCard
       title="Frontend"
