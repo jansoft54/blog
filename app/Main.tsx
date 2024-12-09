@@ -13,9 +13,9 @@ import ProjectCard from '@/components/bentoGrid/projects/ProjectCard'
 export default function Home({ posts }) {
   return (
     <>
-      <div className="grid grid-cols-3 items-start gap-16">
+      <div className="flex flex-col items-start gap-16 xl:grid xl:grid-cols-3">
         <PersonIntroCard
-          className="col-span-1"
+          className="xl:col-span-1"
           animProps={{
             initial: { x: '-20%', opacity: 0 },
             whileInView: { x: 0, opacity: 1 },
@@ -39,7 +39,7 @@ export default function Home({ posts }) {
       >
         Resume
       </h2>
-      <div className=" grid w-full grid-cols-4 grid-rows-1 gap-8">
+      <div className="flex w-full grid-rows-1 flex-col gap-8 xl:grid xl:grid-cols-4">
         <EducationCard />
         <Experience />
       </div>
@@ -50,7 +50,7 @@ export default function Home({ posts }) {
       >
         Skills & Experiences
       </h2>
-      <div className="grid w-full grid-cols-3 grid-rows-1 gap-8">
+      <div className="flex w-full grid-rows-1 flex-col gap-8 xl:grid xl:grid-cols-3">
         <Frontend />
         <Backend />
         <Devops />
@@ -64,7 +64,7 @@ export default function Home({ posts }) {
       >
         Projects
       </h2>
-      <div className="grid w-full grid-cols-2 grid-rows-1 gap-8">
+      <div className="flex w-full flex-col gap-8 xl:grid xl:grid-cols-2 xl:grid-rows-1">
         <ProjectCard
           link={''}
           finished={true}
@@ -85,7 +85,9 @@ export default function Home({ posts }) {
           link={''}
           finished={false}
           title={'ShipFaster'}
-          desc={' It featured AI-guided design assistance powered by a LLM.'}
+          desc={
+            'Shipfast is a beautifully designed, feature-packed template built to streamline the process of launching SaaS applications quickly and efficiently.'
+          }
           img={'/static/images/shipfast.webp'}
           stack={[
             { icon: 'nextjs2', name: 'NextJs' },

@@ -37,7 +37,7 @@ const PersonIntroCard = ({ className, animProps }) => {
       `}</style>
 
       <motion.div
-        className={`  sticky top-0 flex h-auto items-start rounded-xl  dark:bg-black ${className}`}
+        className={`  top-0 flex h-auto items-start rounded-xl dark:bg-black  xl:sticky ${className}`}
         {...animProps}
       >
         <Col className="gap-y-5  pt-6">
