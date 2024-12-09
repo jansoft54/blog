@@ -3,7 +3,7 @@ import TitleCard from '../../TitleCard'
 
 import Col from '../../Col'
 import TechIcon from './TechIcon'
-import { useMediaQuery } from 'util/util'
+import { useMediaQuery } from 'app/util/util'
 
 export default function Frontend() {
   const isMobile = useMediaQuery('(max-width: 768px)')

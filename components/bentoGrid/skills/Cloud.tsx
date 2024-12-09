@@ -2,7 +2,7 @@ import React from 'react'
 import Col from '../../Col'
 import TechIcon from './TechIcon'
 import TitleCard from '../../TitleCard'
-import { useMediaQuery } from 'util/util'
+import { useMediaQuery } from 'app/util/util'
 
 export default function Cloud() {
   const isMobile = useMediaQuery('(max-width: 768px)')
