@@ -5,7 +5,7 @@ const siteMetadata = {
   headerTitle: 'Neural Notions',
   description: 'This is some of the stuff i recently learned and write about!',
   language: 'en-us',
-  theme: 'system', // system, dark or light
+  theme: 'dark', // system, dark or light
   siteUrl: 'https://janhardtke.com',
   siteLogo: `${process.env.BASE_PATH || ''}/static/images/logo.png`,
   socialBanner: `${process.env.BASE_PATH || ''}/static/images/twitter-card.png`,

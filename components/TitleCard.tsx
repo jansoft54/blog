@@ -19,7 +19,7 @@ const TitleCard = ({
   return (
     <motion.div
       className={clsx(
-        ' mb-6  cursor-pointer rounded-2xl p-6 shadow-lg duration-500 hover:scale-105 dark:bg-zinc-900',
+        'cursor-pointer  rounded-2xl p-6 shadow-lg duration-500 hover:scale-105 dark:bg-zinc-900 xl:mb-6',
         className
       )}
       {...{ animProps }}
