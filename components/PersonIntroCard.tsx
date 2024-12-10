@@ -56,7 +56,7 @@ const PersonIntroCard = ({ className, animProps }) => {
           <Row className="divide-y divide-gray-200 pl-3 pt-0 dark:divide-gray-700">
             <Col>
               {yearsSinceDate('1999-10-27')} year old CS graduate student, trying to build stuff
-              others might find useful. Here to write about things i like, mostly revolving around
+              others might find useful. Here to write about things I like, mostly revolving around
               ML.
               <hr className="mt-3 h-px border-t-0 bg-gray-200 dark:bg-gray-700" />
             </Col>

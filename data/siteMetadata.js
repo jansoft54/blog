@@ -3,7 +3,7 @@ const siteMetadata = {
   title: 'Neural Notions Blog',
   author: 'Jan Hardtke',
   headerTitle: 'Neural Notions',
-  description: 'This is some of the stuff i recently learned and write about!',
+  description: 'This is some of the stuff I recently learned and write about!',
   language: 'en-us',
   theme: 'dark', // system, dark or light
   siteUrl: 'https://janhardtke.com',
