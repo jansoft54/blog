@@ -5,3 +5,451 @@ tags: ['transformer', 'nlp', 'code']
 draft: false
 summary: Learn how to adapt the vanilla Transformer to build a state-of-the-art LLM like Meta's Llama 3, exploring key architectural changes and optimizations.
 ---
+
+Meta has recently announced the release of LLaMA 3.3, the latest iteration in their state-of-the-art open-source foundational large language models (LLMs).
+
+<figure style={{ width: '100%', margin: 'auto', paddingLeft: '15%' }}>
+  <img
+    id="cross"
+    src="/static/images/blog/transformers02/lama.webp"
+    alt="Description of the image"
+    style={{ width: '70%', height: 'auto' }}
+  />
+</figure>
+This new version, particularly the LLaMA 3.3 70B model, demonstrates remarkable performance that
+either matches or surpasses the capabilities of OpenAI's closed-source GPT-4o across a wide range of
+benchmarks. LLaMA 3 represents a significant leap in large language model development, building upon
+Meta's ongoing commitment to open-source AI innovation. In this blog post, we will look at the
+architectural advancements and optimizations that set LLaMA 3 apart from earlier models and the
+original transformer framework.
+<figure style={{ width: '100%', margin: 'auto', paddingLeft: '0%', marginBottom: '3rem' }}>
+  <img
+    id="llama3-perf"
+    src="/static/images/blog/transformers02/llama3-perf.png"
+    alt="Description of the image"
+    style={{ width: '100%', height: 'auto' }}
+  />
+</figure>
+
+# Prerequisites
+
+Before diving into the model's code, we will first explore the most significant architectural innovation introduced in Llama 3.
+
+## Rotary positional Encodings (RoPE)
+
+Rotary Position Embeddings (RoPE) are an advanced method for encoding positional information in transformer models, designed to enhance their ability to process sequential data.
+Unlike fixed or learned positional embeddings, RoPE introduces a rotational transformation in the query and key vectors of the self-attention mechanism.
+This approach embeds positional relationships directly into the angular components of these vectors, allowing the model to generalize better across different sequence lengths and maintain relative positional information.
+
+Given the vectors $$q_m$$ and $$k_n$$, which represent the embedded vectors of a word at positions
+$$m$$ and $$n$$ in a sequence, the self-attention mechanism between these tokens at different
+positions is defined by $$q_m^\top k_n$$ or $$q_m k_n^\top$$, depending on whether the configuration
+is row-wise or column-wise.
+
+To incorporate relative positional information, we aim to express the inner product of the query vector $$q_m$$ and the key vector $$k_n$$ as a function $$g$$. This function should depend solely on the word embeddings $$x_m$$ and $$x_n$$, as well as their relative position $$m - n$$.
+In other words, the inner product should encode positional information solely in a relative manner:
+
+$$\langle f_q(x_m, m), f_k(x_n, n) \rangle = g(x_m, x_n, m - n).$$
+
+The primary objective is to devise an encoding mechanism such that the functions $$f_q(x_m, m)$$ and $$f_k(x_n, n)$$ align with and satisfy this relationship.
+
+This is illustrated in the exemplary [figure](#rope_rel) below. The later the word "dog" appears in the sentence, the more it is rotated. However, the most important observation is that the rotation angle between two word vectors (e.g., between "pig" and "dog") remains consistent if their relative distance stays the same, regardless of their absolute position or the length of the sentence. This is what the existence of such a function $$g$$ implies.
+
+<figure style={{ width: '100%', margin: 'auto', paddingLeft: '0%' }}>
+  <img
+    id="rope_rel"
+    src="/static/images/blog/transformers02/rope_rel.webp"
+    alt="Description of the image"
+    style={{ width: '100%', height: 'auto' }}
+  />
+</figure>
+To derive RoPE, we will focus on the case where $$x_q$$ and $$x_k$$ are 2-dimensional. We define
+their positionally encoded counterparts as:
+
+$$
+q_m = f_q(x_q, m), \\
+k_n = f_k(x_k, n),
+$$
+
+where $$m$$ and $$n$$ denote their positions, such that:
+
+$$
+q_m^\top k_n = \langle f_q(x_m, m), f_k(x_n, n) \rangle = g(x_m, x_n, m - n).
+$$
+
+Additionally, we define the initial conditions for $$m = n = 0$$ as:
+
+$$
+q = f_q(x_q, 0), \\
+k = f_k(x_k, 0).
+$$
+
+To find solutions for $$f_q$$ and $$f_k$$, we note that our vectors $$x_q$$ and $$x_k$$ are 2-dimensional. This allows us to represent them as a complex number $$z_{(q,k)}$$ using Euler's formula:
+
+$$
+e^{i\phi} = \cos(\phi) + i\sin(\phi).
+$$
+
+Using this representation, we can define $$f_q$$, $$f_k$$, and $$g$$ as follows:
+
+$$
+f_q(x_q, m) = R_q(x_q, m)e^{i\Theta(x_q, m)} = q_m, \\
+f_k(x_k, n) = R_k(x_k, n)e^{i\Theta(x_k, n)} = k_n, \\
+g(x_q, x_k, m-n) = R_g(x_q, x_k, m-n)e^{i\Theta(x_q, x_k, m-n)}.
+$$
+
+Here, $$R$$ represents the magnitude (scaling factor) and $$\Theta$$ represents the phase (angle of rotation) for the respective functions. This complex representation elegantly encodes both magnitude and phase, enabling us to incorporate relative positional information.
+As we want to satisfy $$\langle f_q(x_m, m), f_k(x_n, n) \rangle = g(x_m, x_n, m - n).$$,
+we can derive the following eqautions for the radial and phase functions $$R$$ and $$\Theta$$:
+
+$$
+R_q(x_q, m)R_k(x_k, n) = R_g(x_q, x_k, n - m) \\
+\Theta_k(x_k, n) - \Theta_q(x_q, m) = \Theta_g(x_q, x_k, n - m)
+$$
+
+The derivation of the first one is indeed trival. The $$\Theta$$ equality can be derived as follows:
+
+$$
+\begin{aligned}
+\langle f_q(x_m, m), f_k(x_n, n) \rangle
+&= (R_q(x_q, m)e^{i\Theta(x_q, m)})^{*}R_k(x_k, n)e^{i\Theta(x_k, n)} \\
+&= R_q(x_q, m)e^{-i\Theta(x_q, m)}R_k(x_k, n)e^{i\Theta(x_k, n)} \\
+&= R_q(x_q, m)R_k(x_k, n)e^{i {{(\Theta(x_k, n)-\Theta(x_q, m))}}} \\
+&= R_g(x_q, x_k, m-n)e^{i{{\Theta(x_q, x_k, m-n)}}} \\
+&= g(x_q, x_k, m-n).
+\end{aligned}
+$$
+
+In this representation, our initial conditions can be defined as:
+
+$$
+q = \|q\|e^{i\theta_q} = R_q(x_q, 0)e^{i\Theta_q(x_q, 0)}, \\
+k = \|k\|e^{i\theta_k} = R_k(x_k, 0)e^{i\Theta_k(x_k, 0)}.
+$$
+
+With the following relationships:
+
+$$
+\Theta_q(x_q, 0) = \theta_q, \\
+\Theta_k(x_k, 0) = \theta_k,
+$$
+
+and
+
+$$
+R_q(x_q, 0) = \|q\|, \\
+R_k(x_k, 0) = \|k\|.
+$$
+
+Now, setting $$m = n$$ and leveraging our knowledge about the initial conditions, we obtain:
+
+$$
+R_q(x_q, m)R_k(x_k, m) = R_g(x_q, x_k, 0) = R_q(x_q, 0)R_k(x_k, 0) = \|q\|\|k\|, \\
+\Theta_k(x_k, m) - \Theta_q(x_q, m) = \Theta_g(x_q, x_k, 0) = \Theta_k(x_k, 0) - \Theta_q(x_q, 0) = \theta_k - \theta_q.
+$$
+
+From this, we can observe that a _possible_ straight forward solution for $$R_q$$, $$R_k$$, and $$R_g$$ can be derived as follows:
+
+$$
+R_q(x_q, m) = R_q(x_q, 0) = \|q\|, \\
+R_k(x_k, n) = R_k(x_k, 0) = \|k\|, \\
+R_g(x_q, x_k, n - m) = R_g(x_q, x_k, 0) = \|q\|\|k\|.
+$$
+
+From this, we can see that these solutions for $$R_q$$, $$R_k$$, and $$R_g$$ are, in fact, independent of any positional information.
+
+Additionally, we observe that $$\Theta$$ in $$\Theta_q(x_q, m) - \Theta_k(x_k, m) = \theta_q - \theta_k$$ is independent of $$x_q$$ or $$x_k$$. Since $$\Theta_q(x_q, m) - \Theta_k(x_k, m) = \theta_q - \theta_k$$, there must exist some function $$\psi(m)$$ such that:
+
+$$
+\Theta_q(x_q, m) = \psi(m) + \theta_q, \\
+\Theta_k(x_k, m) = \psi(m) + \theta_k.
+$$
+
+Now let’s set $$n=m+1$$, which means we get
+
+$$
+\begin{aligned}
+\Theta_k(x_k, n) - \Theta_q(x_q, m)
+&= \psi(m+1) + \theta_k - \psi(m) - \theta_q \\
+&= \psi(m+1) - \psi(m) + \theta_k - \theta_q \\
+&= \Theta_g(x_q, x_k, 1) \\
+&\iff \psi(m+1) - \psi(m) = \Theta_g(x_q, x_k, 1) + \theta_q - \theta_k.
+\end{aligned}
+$$
+
+As $$\Theta_g(x_q, x_k, 1) + \theta_q - \theta_k$$ is constant, we can write $$\psi$$ as
+
+$$
+\psi(m) = m\theta + \gamma
+$$
+
+with $$\theta = \Theta_g(x_q, x_k, 1) + \theta_q - \theta_k \neq 0 $$ and $$\gamma \in \mathcal{R}$$.
+
+This means when now have a way to write our encoding functions $$f_q$$and $$f_k$$:
+
+$$
+\begin{aligned}
+f_q(x_q, m) &= \|q\|e^{i(\theta_q + m\theta + \gamma)} =\|q\|e^{i\theta_q }e^{i(m\theta + \gamma)} = q e^{i(m\theta + \gamma)}, \\
+f_k(x_k, n) &= \|k\|e^{i(\theta_k + n\theta + \gamma)} =\|k\|e^{i\theta_k }e^{i(m\theta + \gamma)} = k e^{i(n\theta + \gamma)}.
+\end{aligned}
+$$
+
+As we dont make assumtions about $$f_q(x_q,0)$$ and $$f_k(x_k,0)$$ we choose
+
+$$
+q = f_q(x_q,0) = W_qx_q \\
+k = f_k(x_k,0) = W_kx_k
+$$
+
+Therefore we can derive the following solution:
+
+$$
+f_q(x_q,m) = (W_qx_q) e^{im\theta} \\
+f_k(x_k,n) = (W_kx_k) e^{in\theta}
+$$
+
+Instead of using Euler's formula with complex numbers, we can express rotations in the attention mechanism using rotation matrices. Let's define a rotation matrix $$R^d_{\Theta,m}$$
+which rotates 2D vectors by $$m\theta$$:
+
+$$
+R^d_{\Theta,m} = \begin{pmatrix}
+cos(m\theta) & -sin(m\theta)\\
+sin(m\theta) & cos(m\theta)
+\end{pmatrix}
+$$
+
+We can now rewrite $$f_q$$ and $$f_k$$ as follows:
+
+$$
+f_q(x_q,m) = R^d_{\Theta,m} (W_qx_q) \\
+f_k(x_k,n) = R^d_{\Theta,n} (W_kx_k)
+$$
+
+Using this matrix representation, the standard attention mechanism can be expressed as:
+
+$$
+q_m^Tk_n = (R^d_{\Theta,m} W_qx_m)^T(R^d_{\Theta,n} W_kx_n) = x_m^TW_q (R^d_{\Theta,m}R^d_{\Theta,n})W_kx_n =
+ x_m^TW_q R^d_{\Theta,m-n}W_kx_n
+$$
+
+the last equality highlights a crucial point: the applied rotation depends solely on the distance between tokens ($$m - n$$) and not on the sentence length or absolute token positions
+
+Currently, we have only considered 2D vectors for $$x_q$$ and $$x_k$$. To generalize this to $$x_{q,k} \in \mathbb{R}^d$$, we divide the $$d$$-dimensional vector into $$d/2$$ two-dimensional subspaces. Each subspace is rotated based on the position of the token in the sequence.
+
+Now given a $$x_{m} \in \mathcal{R}^d$$, we formulate a $$R^d\_{\Theta,m}$$, with:
+
+$$
+R^d_{\Theta,m} =
+\begin{pmatrix}
+\cos m\theta_1 & -\sin m\theta_1 & 0 & 0 & \cdots & 0 & 0 \\
+\sin m\theta_1 & \cos m\theta_1 & 0 & 0 & \cdots & 0 & 0 \\
+0 & 0 & \cos m\theta_2 & -\sin m\theta_2 & \cdots & 0 & 0 \\
+0 & 0 & \sin m\theta_2 & \cos m\theta_2 & \cdots & 0 & 0 \\
+\vdots & \vdots & \vdots & \vdots & \ddots & \vdots & \vdots \\
+0 & 0 & 0 & 0 & \cdots & \cos m\theta_{d/2} & -\sin m\theta_{d/2} \\
+0 & 0 & 0 & 0 & \cdots & \sin m\theta_{d/2} & \cos m\theta_{d/2}
+\end{pmatrix}.
+$$
+
+with pre-defined parameters:
+
+$$
+\Theta = \{\theta_i = 10000^{-2(i-1)/d}, \, i \in [1, 2, \dots, d/2]\}.
+$$
+
+This approach takes every pair of $$(W_{q,k}x_m)$$ and independently rotates it based on the position $$m$$ and the index $$i$$ of the pair in $$x_m$$ ($$\theta_i$$).
+
+<figure style={{ width: '100%', margin: 'auto', paddingLeft: '10%' }}>
+  <img
+    id="rope"
+    src="/static/images/blog/transformers02/rope.png"
+    alt="Description of the image"
+    style={{ width: '80%', height: 'auto' }}
+  />
+</figure>
+The above figure illustrates this process. For each token embedding, we take successive 2D
+subvectors and rotate them by a predefined angle $$\theta_i$$, where $$i$$ is the index of the
+subvector within the token embedding, multiplied by $$m$$, the position of the token in the
+sequence.
+
+Note that the above formulation of $$R^d_{\Theta,m}$$ is highly inefficient, as it constructs a mostly empty $$d \times d$$ matrix. Later, when we implement $$\textbf{RoPE}$$ into the Llama model, we will explore a more efficient method to perform this 2D subvector rotation.
+
+## Grouped-Query Attention (GQA)
+
+Grouped Query Attention (GQA) is an optimization technique in attention mechanisms, aimed at reducing the computational complexity of standard multi-head attention. Instead of computing a separate query for each head, GQA groups multiple heads together to share a single query representation.
+
+<figure style={{ width: '100%', margin: 'auto', paddingLeft: '0%' }}>
+  <img
+    id="gqa"
+    src="/static/images/blog/transformers02/gqa.webp"
+    alt="Description of the image"
+    style={{ width: '100%', height: 'auto' }}
+  />
+</figure>
+The above figure illustrates this clearly. Each rectangle in the figure represents one attention
+head. In standard attention, each head in the queries attends to the corresponding head in the keys.
+However, in this approach, multiple query heads are grouped together to attend to a single key head.
+The standart attention mechanism can be expressed as:
+
+$$
+Q = XW^Q, \quad K = XW^K, \quad V = XW^V,
+$$
+
+where:
+
+- $$X \in \mathbb{R}^{n \times d_{\text{model}}}$$ is the input sequence of token embeddings,
+- $$W^Q, W^K, W^V \in \mathbb{R}^{d_{\text{model}} \times d_{hs}}$$ are the weight matrices for the query, key, and value, respectively,
+- $$Q, K, V \in \mathbb{R}^{n \times d_{hs}}$$ are the computed query, key, and value matrices,
+- $$n$$ is the sequence length, and $$d_\text{model}$$ is the embedding dimension.
+
+Here, $$d_{hs} = \text{heads} \times d_h$$, where $$d_h$$ is the head dimension. In practice, $$d_\text{model} = \text{heads} \times d_h$$, as we later reshape the $$Q$$, $$K$$, and $$V$$ tensors into the shape:
+
+$$
+(\text{b}, \text{seq\_len},\text{heads}* d_h) \implies
+(\text{b}, \text{seq\_len},\text{heads}, d_h) \implies
+(\text{b}, \text{heads}, \text{seq\_len}, d_h).
+$$
+
+The fundamental difference in GQA lies in the shape of the weight matrices. In standard attention, the weight matrices are of size:
+
+$$
+d_{\text{model}} \times d_{hs},
+$$
+
+where $$d_{hs} = \text{heads} \times d_h$$.
+
+In GQA, the weight matrices for $$K$$ and $$V$$ are of size:
+
+$$
+d_{\text{model}} \times (\text{heads}_{\text{kv}} * d_h),
+$$
+
+where $$\text{heads}_{\text{kv}}$$ refers to the number of key-value heads. For a group size of $$\text{group\_size} = 2$$, as shown in the figure, the number of key-value heads is reduced:
+
+$$
+\text{heads}_{\text{kv}} = \frac{\text{heads}}{\text{group\_size}} = 4.
+$$
+
+This will result in the shape $$(\text{b}, \text{seq\_len},\text{heads}_{\text{kv}}* d_h) $$ for our $$K,V$$. Such that we can reshape them into:
+
+$$
+(\text{b}, \text{seq\_len},\text{heads}_{\text{kv}}* d_h) \implies
+(\text{b}, \text{seq\_len},\text{heads}_{\text{kv}}, d_h) \implies
+(\text{b}, \text{heads}_{\text{kv}}, \text{seq\_len}, d_h).
+$$
+
+Now, since $$\text{heads}_{\text{kv}} \leq \text{heads}$$, we observe that by sharing attention heads between queries, we can drastically reduce the memory footprint.
+
+# Preparing the Dataset
+
+We will train out Llama model on the **TinyStories** datasets.
+The TinyStories dataset is a dataset of short, narrative-style stories designed to be used for training natural language processing (NLP) models, particularly language models like Llama. These dataset consist of small, self-contained stories that capture a variety of writing styles, including simple plots, dialogues, and events, making them suitable for fine-tuning language models on tasks related to story generation. This is a small
+example from the TinyStories dataset:
+
+_Once upon a time, there was a little car named Beep. Beep loved to go fast and play in the sun. Beep was a healthy car because he always had good fuel. Good fuel made Beep happy and strong. One day, Beep was driving in the park when he saw a big tree. The tree had many leaves that were falling. Beep liked how the leaves fall and wanted to play with them. Beep drove under the tree and watched the leaves fall on him. He laughed and beeped his horn. Beep played with the falling leaves all day. When it was time to go home, Beep knew he needed more fuel. He went to the fuel place and got more healthy fuel. Now, Beep was ready to go fast and play again the next day. And Beep lived happily ever after_.
+
+Now let’s look our code that prepares this dataset for training:
+
+```python
+import torch
+from datasets import load_dataset
+
+torch.set_printoptions(profile="full")
+from datasets import load_dataset
+from transformers import GPT2TokenizerFast
+from model import Llama3, ModelArgs
+from transformers import DataCollatorForLanguageModeling
+from torch.utils.data import DataLoader
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s: %(message)s",
+    handlers=[logging.StreamHandler()],  # Logs to stdout
+)
+logger = logging.getLogger()
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+max_seq_len = 256
+batch_size = 70
+dataset = load_dataset("roneneldan/TinyStories", split="train").select(range(1000))
+tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
+tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+
+
+def tokenize_function(examples):
+    return tokenizer(examples["text"], max_length=max_seq_len, truncation=True)
+
+
+dataset = dataset.filter(
+    lambda example: example["text"] is not None and example["text"].strip() != ""
+)
+
+tokenized_dataset = dataset.map(
+    tokenize_function, batched=True, remove_columns=["text"]
+)
+
+data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+
+dataloader = DataLoader(
+    tokenized_dataset,
+    batch_size=batch_size,
+    shuffle=True,
+    collate_fn=lambda feature: Llama3.gen_labels(feature, tokenizer, data_collator),
+)
+```
+
+This loads the TinyStories dataset and prepares it for training a language model. It tokenizes the text using **GPT2TokenizerFast**, ensuring that the sequences are of a fixed length (**max_seq_len**). The dataset is filtered to remove empty or invalid texts. A DataLoader is created using a custom collate function (`Llama3.gen_labels`) to generate labels for training, while efficiently handling batch processing with **DataCollatorForLanguageModeling**, which pads sequences and generates attention masks.
+
+```python
+class Llama3
+  (...)
+  @staticmethod
+  def __build_masks(seq_len, attention_mask, device, position=0, training=False):
+      causal = torch.tril(torch.ones(seq_len, seq_len, dtype=torch.bool)).unsqueeze(0)
+      (...)
+      if attention_mask == None:
+          return causal
+      attention_mask = attention_mask.unsqueeze(1).repeat(1, seq_len, 1).int()
+
+      return (causal & attention_mask).int()
+
+  @staticmethod
+  def gen_labels(labels, tokenizer, data_collator, ignore_index=-100):
+      batch = data_collator(labels)
+      labels = batch["labels"]
+      attention_mask = batch["attention_mask"]
+      for i in range(labels.shape[0]):
+          l = torch.roll(labels[i], -1)
+          target_indices = (l == ignore_index).nonzero(as_tuple=True)[0]
+          if len(target_indices) == 0:
+              l[-1] = tokenizer.eos_token_id
+          else:
+              seq_len = len(l) - len(target_indices)
+              l[-1] = ignore_index
+              l[seq_len - 1] = tokenizer.eos_token_id
+
+          labels[i] = l
+
+      batch["labels"] = labels
+      batch["attention_mask"] = Llama3.__build_masks(
+          labels.shape[1], attention_mask, device, training=True
+      )
+  (...)
+```
+
+The `gen_labels` function is designed to prepare the labels for training by shifting them one token to the left and appending an **EOS** (End of Sequence) token at the end. At the start of the function, the labels are just a copy of the input. The challenge is to place the **EOS** token at the correct position, which requires determining the length of the unpadded sequence. If padding is present, the function places the **EOS** token at the end of the actual data, not on top of padding tokens. If no padding exists, the **EOS** token is placed at the very end of the sequence.
+
+Once the labels are shifted and the **EOS** token is placed correctly, the function must handle the attention masks. Since **DataCollatorForLanguageModeling** provides an array of attention values for a single sequence, the function needs to convert this into a matrix that can be used for causal language modeling. This involves combining the attention mask with a causal mask, which is a lower triangular matrix, ensuring that the model only attends to previous tokens in the sequence and not to any future tokens.
+
+# Llama3 - Model Architecture
+
+<figure style={{ width: '100%', margin: 'auto', paddingLeft: '15%' }}>
+  <img
+    id="llama3"
+    src="/static/images/blog/transformers02/llama3-arch.png"
+    alt="Description of the image"
+    style={{ width: '70%', height: 'auto' }}
+  />
+</figure>
