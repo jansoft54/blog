@@ -272,7 +272,52 @@ subvectors and rotate them by a predefined angle $$\theta_i$$, where $$i$$ is th
 subvector within the token embedding, multiplied by $$m$$, the position of the token in the
 sequence.
 
-Note that the above formulation of $$R^d_{\Theta,m}$$ is highly inefficient, as it constructs a mostly empty $$d \times d$$ matrix. Later, when we implement $$\textbf{RoPE}$$ into the Llama model, we will explore a more efficient method to perform this 2D subvector rotation.
+Note that the above formulation of $$\mathbf{R}^d_{\Theta,m}$$ is highly inefficient, as it constructs a mostly empty $$d \times d$$ matrix. Therefore, the paper introduces very simple elementwise vector operations, which are equivalent to multiplying $$W_{q,k}x_m$$with the very sparse $$\mathbf{R}^d_{\Theta,m} $$. It defines
+
+$$
+R^d_{\Theta,m}x =
+\begin{pmatrix}
+x_1 \\
+x_2 \\
+x_3 \\
+x_4 \\
+\vdots \\
+x_{d-1} \\
+x_d
+\end{pmatrix}
+\otimes
+\begin{pmatrix}
+\cos(m\theta_1) \\
+\cos(m\theta_1) \\
+\cos(m\theta_2) \\
+\cos(m\theta_2) \\
+\vdots \\
+\cos(m\theta_{d/2}) \\
+\cos(m\theta_{d/2})
+\end{pmatrix}
++
+\begin{pmatrix}
+-x_2 \\
+x_1 \\
+-x_4 \\
+x_3 \\
+\vdots \\
+-x_d \\
+x_{d-1}
+\end{pmatrix}
+\otimes
+\begin{pmatrix}
+\sin(m\theta_1) \\
+\sin(m\theta_1) \\
+\sin(m\theta_2) \\
+\sin(m\theta_2) \\
+\vdots \\
+\sin(m\theta_{d/2}) \\
+\sin(m\theta_{d/2})
+\end{pmatrix}
+$$
+
+Now this is the operation that we will implement later in PyTorch.
 
 ## Grouped-Query Attention (GQA)
 
@@ -445,6 +490,10 @@ Once the labels are shifted and the **EOS** token is placed correctly, the funct
 
 # Llama3 - Model Architecture
 
+## Llama3 Architecture Overview
+
+Now that we have everything in place, let's look at how the **Llama3** architecture is structured. Below is an overview of its design:
+
 <figure style={{ width: '100%', margin: 'auto', paddingLeft: '15%' }}>
   <img
     id="llama3"
@@ -453,3 +502,281 @@ Once the labels are shifted and the **EOS** token is placed correctly, the funct
     style={{ width: '70%', height: 'auto' }}
   />
 </figure>
+
+As we can see, **Llama3** is conceptually very similar to the vanilla transformer architecture. One notable change that stands out is the use of **RMSNorm** instead of **LayerNorm** for normalization.
+
+$$
+\text{RMSNorm}(x) = \frac{x}{\sqrt{\frac{1}{n} \sum_{i=1}^{n} x_i^2 + \epsilon}} \cdot \gamma
+$$
+
+$$
+\text{LayerNorm}(x) = \frac{x - \mu}{\sigma + \epsilon} \cdot \gamma + \beta
+$$
+
+While **LayerNorm** normalizes the input by using the mean and standard deviation of the tensor, **RMSNorm** uses the root mean square of the elements, making it simpler and computationally more efficient. Both methods have learnable **scaling** $$\gamma$$ and **bias** $$\beta$$ parameters, but **RMSNorm** avoids the need for computing the mean and standard deviation, which can be more efficient in practice.
+
+Additionally, we observe that the _positional encoding_ (RoPE) is applied directly to the **queries** and **keys** in the attention layer, rather than at the embedding level. The **values**, however, are not position encoded.
+
+After that the outputs of the attention layer are again feed into a FFN. This time however we use the so called **SwiGLU** activation function.
+The **SwiGLU** (Swish-Gated Linear Unit) activation function is a variation of the standard activation functions like **ReLU** and **GELU**. It is designed to combine the benefits of the **Swish** activation function and the **Gated Linear Unit** (GLU). SwiGLU introduces a gating mechanism using a linear function combined with the **Swish** activation, which helps improve model performance, particularly in transformer-based architectures.
+
+The **SwiGLU** activation function is mathematically defined as:
+
+$$
+\text{SwiGLU}(x) = \text{Swish}(x) \cdot   h(X)
+$$
+
+Where:
+
+- **$$Swish(x)$$** is the **Swish** activation function defined as:
+
+  $$
+  \text{Swish}(x) = x \cdot \sigma(x)
+  $$
+
+  with $$\sigma(x)$$ being the **sigmoid function**:
+
+  $$
+  \sigma(x) = \frac{1}{1 + e^{-x}}
+  $$
+
+- **$$h(X)$$** is the Gated Linear Unit with:
+  $$ h(X)=(XW+b) \otimes \sigma(XV+c) \quad b,c \in \mathbb{R} $$
+  with $$\otimes$$ being the element-wise product
+
+Now that we have an overview of the **Llama3** architecture, let's quickly discuss the implementation of the **rotary positional encodings** in our model. As mentioned earlier, the direct formulation of a large, mostly empty
+$$R^d_{\Theta,m} $$ matrix for positional encodings is inefficient and wasteful in terms of memory and computation.
+Therefore, we pursue a different approach to implement positional encodings.
+
+Below we have the `RoPE`-class, which implents the positional encoding.
+
+```python
+class RoPE:
+    @staticmethod
+    def compute_freq(head_dim: int, seq_len: int, base: int = 10000):
+        exp = -2 * torch.arange(0, head_dim, 2).float() / head_dim
+        thetas = torch.pow(base, exp)
+        m = torch.arange(0, seq_len).float()
+        freq = torch.outer(m, thetas).float()
+        freq_comp = torch.polar(torch.ones_like(freq), freq)
+        return freq_comp
+
+    @staticmethod
+    def apply_rotary_embedding(x: torch.Tensor, freq_cis):
+        # batch,seq_len,heads,d_k
+        x_comp = torch.view_as_complex(x.float().reshape(*(x.shape[:-1]), -1, 2))
+        freq_com = freq_cis.unsqueeze(0).unsqueeze(2)
+
+        x_out = torch.view_as_real(x_comp * freq_com).reshape(*x.shape)
+        return x_out.float()
+```
+
+The **`compute_freq`** function precomputes the $$ m\theta_i $$ for $$m \leq \text{max\_len} $$ and $$i \leq \text{d\_model} $$.
+
+While the first two lines implement the following equation:
+
+$$
+\Theta = \{\theta_i = 10000^{-2(i-1)/d}, \, i \in [1, 2, \dots, d/2]\},
+$$
+
+the third line implements the outer product between the array of positions and the $$\theta_i $$.
+
+Lastly, we use `torch.polar`, which converts the number into a complex number using the matrix entries as angular components. Mathematically, this whole process can be expressed as:
+
+$$
+\psi = M\Theta^T = \begin{bmatrix}
+m_1 \theta_1 & m_1  \theta_2 & \dots & m_1 \theta_{d/2} \\
+m_2 \theta_1 & m_2 \theta_2 & \dots & m_2 \theta_{d/2} \\
+\vdots & \vdots & \ddots & \vdots \\
+ m_{\text{max}} \theta_1 & m_{\text{max}} \theta_2 & \dots & m_{\text{max}}  \theta_{d/2}
+\end{bmatrix}
+\text{, with }
+M = \begin{bmatrix}
+0 \\
+\vdots \\
+\text{max}
+\end{bmatrix}
+
+\Theta = \begin{bmatrix}
+\theta_0 \\
+\vdots \\
+\theta_{d/2} \\
+\end{bmatrix}
+$$
+
+After the `torch.polar` operation, which converts the matrix entries into their polar representation, it looks like this:
+
+$$
+\begin{aligned}
+polar(\psi) &= \begin{bmatrix}
+cos(m_1 \theta_1) + i sin(m_1 \theta_1) & cos(m_1  \theta_2) + i sin(m_1  \theta_2) & \dots & cos(m_1 \theta_{d/2}) +  i sin(m_1 \theta_{d/2})\\
+cos(m_2 \theta_1) + i sin(m_2 \theta_1) & cos(m_2  \theta_2) + i sin(m_2  \theta_2) & \dots & cos(m_2 \theta_{d/2}) +  i sin(m_2 \theta_{d/2})\\
+\vdots & \vdots & \ddots & \vdots \\
+cos(m_{\text{max}} \theta_1) + i sin(m_{\text{max}} \theta_1) & cos(m_{\text{max}} \theta_2) + i sin(m_{\text{max}} \theta_2) & \dots & cos(m_{\text{max}} \theta_{d/2}) + i sin(m_{\text{max}} \theta_{d/2})
+\end{bmatrix}
+
+
+\end{aligned}
+$$
+
+As we can see the radial components are $$1$$.
+
+We will now shift our focus on the `apply_rotary_embedding` function, which given
+queries $$Q$$ and keys $$K$$, will encode them based on their position in the sentence.
+
+let’s demonstrate this problems bei focusing on $$polar(\psi)_j$$, which contains the angular
+components for position $$j$$. Let $$x \in \{q,k\} \sub \mathbb{R}^{1 \times \text{d\_model}}$$ be the
+queries ($$Q$$) and keys($$K$$). We will transfrom them in the following way:
+
+$$
+x =
+\begin{bmatrix}
+x_1 \\
+x_2 \\
+x_3 \\
+x_4 \\
+\vdots \\
+x_{d-1} \\
+x_d
+\end{bmatrix}
+\xrightarrow{\text{reshape}}
+\begin{bmatrix}
+\begin{bmatrix} x_1 & x_2 \end{bmatrix} \\
+\begin{bmatrix} x_3 & x_4 \end{bmatrix} \\
+\vdots \\
+\begin{bmatrix} x_{d-1} & x_d \end{bmatrix} \\
+
+\end{bmatrix}
+\xrightarrow{\text{convert into complex}}
+
+\begin{bmatrix}
+ x_1 + ix_2 \\
+ x_3 + ix_4 \\
+\vdots \\
+ x_{d-1} + ix_d \\
+
+\end{bmatrix} = \hat{x}
+$$
+
+Now we take this vector of complex entries and multiply it element-wise with $$polar(\psi)_j$$:
+
+$$
+\begin{aligned}
+
+\hat{x} \otimes polar(\psi)_j
+
+&=
+
+\begin{bmatrix}
+ x_1 + ix_2 \\
+ x_3 + ix_4 \\
+\vdots \\
+ x_{d-1} + ix_d \\
+\end{bmatrix}
+\otimes
+\begin{bmatrix}
+cos(j \theta_1) + i sin(j \theta_1) \\
+cos(j  \theta_2) + i sin(j  \theta_2) \\
+\vdots \\
+cos(j \theta_{d/2}) +  i sin(j \theta_{d/2})\\
+\end{bmatrix}\\
+
+&=
+
+\begin{bmatrix}
+(x_1 + ix_2)(cos(j \theta_1) + i sin(j \theta_1)) \\
+( x_3 + ix_4 )(cos(j  \theta_2) + i sin(j  \theta_2)) \\
+\vdots \\
+(x_{d-1} + ix_d)(cos(j \theta_{d/2}) +  i sin(j \theta_{d/2}))\\
+\end{bmatrix} \\
+
+&=
+\begin{bmatrix}
+x_1 \cos(j \theta_1) - x_2 \sin(j \theta_1) + i\left(x_1 \sin(j \theta_1) + x_2 \cos(j \theta_1)\right) \\
+x_3 \cos(j \theta_1) - x_4 \sin(j \theta_1) + i\left(x_3 \sin(j \theta_1) + x_4 \cos(j \theta_1)\right) \\
+\vdots \\
+x_{d-1} \cos(j \theta_1) - x_d \sin(j \theta_1) + i\left(x_{d-1} \sin(j \theta_1) + x_d \cos(j \theta_1)\right) \\
+\end{bmatrix}\\
+
+\end{aligned}
+
+
+$$
+
+We can now view this result again as a real matrix and reshape it into its original dimension:
+
+$$
+\begin{aligned}
+
+&\xrightarrow{\text{reshape}}
+
+\begin{bmatrix}
+\begin{bmatrix}x_1 \cos(j \theta_1) - x_2 \sin(j \theta_1) \quad  x_1 \sin(j \theta_1) + x_2 \cos(j \theta_1)\end{bmatrix} \\
+\begin{bmatrix}x_3 \cos(j \theta_1) - x_4 \sin(j \theta_1) \quad x_3 \sin(j \theta_1) + x_4 \cos(j \theta_1)\end{bmatrix} \\
+\vdots \\
+\begin{bmatrix}x_{d-1} \cos(j \theta_1) - x_d \sin(j \theta_1) \quad x_{d-1} \sin(j \theta_1) + x_d \cos(j \theta_1) \end{bmatrix} \\
+\end{bmatrix}\\
+
+
+&\xrightarrow{\text{reshape}}
+\begin{bmatrix}
+x_1 \cos(j \theta_1) - x_2 \sin(j \theta_1) \\
+x_1 \sin(j \theta_1) + x_2 \cos(j \theta_1) \\
+x_3 \cos(j \theta_1) - x_4 \sin(j \theta_1) \\
+x_3 \sin(j \theta_1) + x_4 \cos(j \theta_1) \\
+\vdots \\
+x_{d-1} \cos(j \theta_1) - x_d \sin(j \theta_1) \\
+x_{d-1} \sin(j \theta_1) + x_d \cos(j \theta_1)  \\
+\end{bmatrix}\\
+
+&=
+\begin{pmatrix}
+x_1 \\
+x_2 \\
+x_3 \\
+x_4 \\
+\vdots \\
+x_{d-1} \\
+x_d
+\end{pmatrix}
+\otimes
+\begin{pmatrix}
+\cos(j\theta_1) \\
+\cos(j\theta_1) \\
+\cos(j\theta_2) \\
+\cos(j\theta_2) \\
+\vdots \\
+\cos(j\theta_{d/2}) \\
+\cos(j\theta_{d/2})
+\end{pmatrix}
++
+\begin{pmatrix}
+-x_2 \\
+x_1 \\
+-x_4 \\
+x_3 \\
+\vdots \\
+-x_d \\
+x_{d-1}
+\end{pmatrix}
+\otimes
+\begin{pmatrix}
+\sin(j\theta_1) \\
+\sin(j\theta_1) \\
+\sin(j\theta_2) \\
+\sin(j\theta_2) \\
+\vdots \\
+\sin(j\theta_{d/2}) \\
+\sin(j\theta_{d/2})
+\end{pmatrix}\\
+&= R^d_{\Theta,j}x
+
+
+\end{aligned}
+
+
+$$
+
+As we can see, we arrived at our end result of $$R^d_{\Theta,j}x$$, with the operations performed in our PyTorch code in the function `apply_rotation`.
+
+Now that we have covered the most important details that distinguish the Llama3 architecture from a vanilla decoder-only transformer, we can actually take a look at the code of the Llama class.
