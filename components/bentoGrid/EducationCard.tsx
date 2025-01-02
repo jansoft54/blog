@@ -71,16 +71,7 @@ export default function EducationCard() {
             <strong className="dark:text-white">2020-2024</strong>
             <div> B.Sc. in Computer Science, University of Bonn</div>
             <Col className="list-circle ">
-              <a
-                className=" text-primary-500  hover:text-primary-300"
-                href={
-                  'https://www.dice.uni-bonn.de/hpca/documents/abschlussarbeiten/2024_bachelor_jan_niclas_hardtke.pdf'
-                }
-                target="_blank"
-              >
-                "Second Order Methods for Neural Network Optimization"
-              </a>
-              (Grade: 1.3 [1.0-5.0])
+              "Second Order Methods for Neural Network Optimization" (Grade: 1.3 [1.0-5.0])
             </Col>
           </motion.div>
         </Row>

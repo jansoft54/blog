@@ -275,7 +275,7 @@ sequence.
 Note that the above formulation of $$\mathbf{R}^d_{\Theta,m}$$ is highly inefficient, as it constructs a mostly empty $$d \times d$$ matrix. Therefore, the paper introduces very simple elementwise vector operations, which are equivalent to multiplying $$W_{q,k}x_m$$with the very sparse $$\mathbf{R}^d_{\Theta,m} $$. It defines
 
 $$
-R^d_{\Theta,m}x =
+R^d_{\Theta,m}W_{q,k}x_m =
 \begin{pmatrix}
 x_1 \\
 x_2 \\
@@ -503,7 +503,9 @@ Now that we have everything in place, let's look at how the **Llama3** architect
   />
 </figure>
 
-As we can see, **Llama3** is conceptually very similar to the vanilla transformer architecture. One notable change that stands out is the use of **RMSNorm** instead of **LayerNorm** for normalization.
+As we can see, **Llama3** is conceptually very similar to the vanilla transformer architecture.
+Most importantly, the Llama3 and other GPT-style models only consist of a decoder-only transformer. This means that we won't use the encoder and the cross-attention, which we covered in the previous blog post.
+Another notable change that stands out is the use of **RMSNorm** instead of **LayerNorm** for normalization.
 
 $$
 \text{RMSNorm}(x) = \frac{x}{\sqrt{\frac{1}{n} \sum_{i=1}^{n} x_i^2 + \epsilon}} \cdot \gamma
@@ -922,9 +924,6 @@ class Llama3(nn.Module):
         return loss
 
     def __run_model(self, tgt, attention_mask, position=0):
-        causal_mask = self._build_masks(
-            tgt.shape[1], attention_mask, tgt.device, position=position
-        )
         tgt_embed = self.embedding(tgt)
         freqs_cis = self.freqs_cis[position : position + tgt_embed.shape[1]].to(
             tgt.device
@@ -938,6 +937,104 @@ class Llama3(nn.Module):
         logits = self.__run_model(tgt, attention_mask)
         return self.calc_loss(logits, labels)
 
+```
+
+As this is rather much to comprehend, we will start with the **forward** method of the Llama class. It is easy to see that this just calls `__run_model`, which precomputes the frequency components for the position encoding, based on the position of the current token. This is a result of the **KV-Cache**, which we will cover in a bit. The determined $$ m_j \theta_i $$ are then passed to the decoder layers, together with the token embeddings and masks.
+
+The **DecoderLayer** may be of more interest:
+
+```python
+class DecoderLayer(nn.Module):
+    def __init__(self, d_model=256, heads=4, group_size=2, max_seq_len=256):
+        super(DecoderLayer, self).__init__()
+        self.norm1 = nn.RMSNorm(d_model, eps=1e-6)
+        self.norm2 = nn.RMSNorm(d_model, eps=1e-6)
+        self.ffn = FFN(d_model=d_model)
+        self.attention = MultiHeadGQAttention(
+            heads=heads, d_model=d_model, group_size=group_size, max_seq_len=max_seq_len
+        )
+
+    def forward(self, x, tgt_causal_mask, pos, freqs_cis):
+        x_norm = self.norm1(x)
+        x = x + self.attention(
+            x_norm, x_norm, x_norm, tgt_causal_mask, freqs_cis, position=pos
+        )
+        return x + self.ffn(self.norm2(x))
+```
+
+As we can see from our architecture overview from before, we first do an **RMSNorm** before we feed the output into the
+**MultiHeadGQAttention** layer. Applying the skip connection and the **FFN** is pretty self explanotroy.
+So the most interesting Layer is the **MultiHeadGQAttention**. So let’s look at that:
+
+```python
+class MultiHeadGQAttention(nn.Module):
+    flash = False
+
+    def __init__(self, heads=4, d_model=256, group_size=2, max_seq_len=256):
+        super(MultiHeadGQAttention, self).__init__()
+        self.heads = heads
+        self.d_model = d_model
+        self.group_size = group_size
+
+        self.W_q = nn.Linear(d_model, d_model, bias=False)
+        self.W_k = nn.Linear(d_model, d_model // group_size, bias=False)
+        self.W_v = nn.Linear(d_model, d_model // group_size, bias=False)
+        self.W_o = nn.Linear(d_model, d_model, bias=False)
+
+    def forward(
+        self,
+        q,
+        k,
+        v,
+        mask,
+        freq_cis,
+        position=-1,
+    ):
+        d_k = self.d_model // self.heads
+        bs, seq_len = q.shape[:2]
+        q, k, v = self.W_q(q), self.W_k(k), self.W_v(v)
+
+        q = q.view(
+            q.shape[0], q.shape[1], self.heads, -1
+        )  # (batch,seq_len,heads,d_k) or (batch,1,heads,d_k)
+        k = k.view(
+            k.shape[0], k.shape[1], self.heads // self.group_size, -1
+        )  # (batch,seq_len,heads,d_k) or (batch,1,heads,d_k)
+        v = v.view(
+            v.shape[0], v.shape[1], self.heads // self.group_size, -1
+        )  # (batch,seq_len,heads,d_k) or (batch,1,heads,d_k)
+        q = RoPE.apply_rotary_embedding(q, freq_cis)
+        k = RoPE.apply_rotary_embedding(k, freq_cis)
+        if not self.training:
+            k, v = self.kv_cache.update(k, v, position)
+
+
+        q, k, v = (x.transpose(1, 2) for x in (q, k, v))
+
+        if MultiHeadGQAttention.flash:
+            q, k, v = (x.contiguous() for x in (q, k, v))
+            output = (
+                F.scaled_dot_product_attention(
+                    q, k, v, attn_mask=(mask == 1).unsqueeze(1)
+                )
+                .transpose(1, 2)
+                .reshape(bs, seq_len, -1)
+            )
+        else:
+            scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(d_k)
+            if mask is not None:
+                mask = mask.unsqueeze(1)
+                scores = torch.masked_fill(scores, mask == 0, float("-inf"))
+                attention = nn.functional.softmax(scores, dim=-1)
+                output = (
+                    torch.matmul(attention, v)
+                    .transpose(1, 2)
+                    .contiguous()
+                    .view(bs, seq_len, -1)
+                )
+
+        output = self.W_o(output)
+        return output
 ```
 
 # Optimizing Inference - The KV-Cache
