@@ -15,6 +15,7 @@ Meta has recently announced the release of LLaMA 3.3, the latest iteration in th
     alt="Description of the image"
     style={{ width: '70%', height: 'auto' }}
   />
+
 </figure>
 This new version, particularly the LLaMA 3.3 70B model, demonstrates remarkable performance that
 either matches or surpasses the capabilities of OpenAI's closed-source GPT-4o across a wide range of
@@ -29,6 +30,11 @@ original transformer framework.
     alt="Description of the image"
     style={{ width: '100%', height: 'auto' }}
   />
+    <figcaption style={{ textAlign: 'center', fontSize: '0.9rem', color: '#666' }}>
+    <a href="https://ai.meta.com/blog/meta-llama-3/" target="_blank" rel="noopener noreferrer">
+      Image source{' '}
+    </a>
+  </figcaption>
 </figure>
 
 # Prerequisites
@@ -61,7 +67,15 @@ This is illustrated in the exemplary [figure](#rope_rel) below. The later the wo
     src="/static/images/blog/transformers02/rope_rel.webp"
     alt="Description of the image"
     style={{ width: '100%', height: 'auto' }}
-  />
+
+/>
+
+<figcaption style={{ textAlign: 'center', fontSize: '0.9rem', color: '#666' }}>
+<a href="https://arxiv.org/abs/2104.09864" target="_blank" rel="noopener noreferrer">
+Image source{' '}
+</a>
+
+  </figcaption>
 </figure>
 To derive RoPE, we will focus on the case where $$x_q$$ and $$x_k$$ are 2-dimensional. We define
 their positionally encoded counterparts as:
@@ -266,6 +280,13 @@ This approach takes every pair of $$(W_{q,k}x_m)$$ and independently rotates it 
     alt="Description of the image"
     style={{ width: '80%', height: 'auto' }}
   />
+
+<figcaption style={{ textAlign: 'center', fontSize: '0.9rem', color: '#666' }}>
+<a href="https://arxiv.org/abs/2104.09864" target="_blank" rel="noopener noreferrer">
+Image source{' '}
+</a>
+
+  </figcaption>
 </figure>
 The above figure illustrates this process. For each token embedding, we take successive 2D
 subvectors and rotate them by a predefined angle $$\theta_i$$, where $$i$$ is the index of the
@@ -330,6 +351,13 @@ Grouped Query Attention (GQA) is an optimization technique in attention mechanis
     alt="Description of the image"
     style={{ width: '100%', height: 'auto' }}
   />
+
+<figcaption style={{ textAlign: 'center', fontSize: '0.9rem', color: '#666' }}>
+<a href="https://arxiv.org/pdf/2305.13245" target="_blank" rel="noopener noreferrer">
+Image source{' '}
+</a>
+
+  </figcaption>
 </figure>
 The above figure illustrates this clearly. Each rectangle in the figure represents one attention
 head. In standard attention, each head in the queries attends to the corresponding head in the keys.
@@ -501,6 +529,12 @@ Now that we have everything in place, let's look at how the **Llama3** architect
     alt="Description of the image"
     style={{ width: '70%', height: 'auto' }}
   />
+  <figcaption style={{ textAlign: 'center', fontSize: '0.9rem', color: '#666' }}>
+<a href="https://medium.com/@vi.ai_/exploring-and-building-the-llama-3-architecture-a-deep-dive-into-components-coding-and-43d4097cfbbb" target="_blank" rel="noopener noreferrer">
+Image source{' '}
+</a>
+
+  </figcaption>
 </figure>
 
 As we can see, **Llama3** is conceptually very similar to the vanilla transformer architecture.
@@ -924,13 +958,14 @@ class Llama3(nn.Module):
         return loss
 
     def __run_model(self, tgt, attention_mask, position=0):
+
         tgt_embed = self.embedding(tgt)
         freqs_cis = self.freqs_cis[position : position + tgt_embed.shape[1]].to(
             tgt.device
         )
 
         for i in range(self.num_layers):
-            tgt_embed = self.layers[i](tgt_embed, causal_mask, position, freqs_cis)
+            tgt_embed = self.layers[i](tgt_embed, attention_mask, position, freqs_cis)
         return self.ffn(self.norm(tgt_embed))
 
     def forward(self, tgt, attention_mask, labels):
@@ -1124,6 +1159,12 @@ One of the most important optimizations that Llama has introduced in their archi
     alt="Description of the image"
     style={{ width: '80%', height: 'auto' }}
   />
+    <figcaption style={{ textAlign: 'center', fontSize: '0.9rem', color: '#666' }}>
+<a href="https://medium.com/@joaolages/kv-caching-explained-276520203249" target="_blank" rel="noopener noreferrer">
+Image source{' '}
+</a>
+
+  </figcaption>
 </figure>
 
 As you know, during inference we sample the next token and append it to the sequence before we
@@ -1141,7 +1182,13 @@ This is exactly where the **key-value cache (kv-cache)** comes in.
     alt="Description of the kv-cache mechanism"
     style={{ width: '80%', height: 'auto' }}
   />
-</figure>
+   <figcaption style={{ textAlign: 'center', fontSize: '0.9rem', color: '#666' }}>
+<a href="https://developer.nvidia.com/blog/mastering-llm-techniques-inference-optimization/" target="_blank" rel="noopener noreferrer">
+Image source{' '}
+</a>
+
+  </figcaption>
+  </figure>
 
 For every token we see, we save it in the **kv-cache** for later usage in the multiplications.
 By doing this, we can save a significant amount of attention multiplications, as we only need to compute
