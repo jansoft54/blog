@@ -6,10 +6,8 @@ import React from 'react'
 import StackIcon from 'tech-stack-icons'
 import { motion } from 'framer-motion'
 import { useMediaQuery } from '@/components/util/util'
-
 export default function ProjectCard({ title, desc, img, stack, finished, link }) {
   const isMobile = useMediaQuery('(max-width: 768px)')
-  console.log('hi' + isMobile)
   return (
     <motion.div
       className={
@@ -53,6 +51,8 @@ export default function ProjectCard({ title, desc, img, stack, finished, link })
           <Link
             href={link}
             aria-label="Github"
+            rel="noopener noreferrer"
+            target="_blank"
             className="relative bottom-0 flex w-min justify-center rounded-full bg-primary-500 p-3 text-base font-medium leading-6 shadow-md"
             style={{ cursor: finished ? 'pointer' : 'default' }}
           >

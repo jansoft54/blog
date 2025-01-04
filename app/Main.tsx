@@ -97,6 +97,19 @@ export default function Home({ posts }) {
             { icon: 'postgresql', name: 'PostgreSQL' },
           ]}
         />
+        <ProjectCard
+          link={'https://github.com/jansoft54/Building-Llama3-100M'}
+          finished={true}
+          title={'TinyLlama 3'}
+          desc={
+            'A from-scratch, 50M-parameter implementation of Meta’s LLaMA 3 model. It supports RoPE (rotary positional encodings), grouped query attention (GQA), and a KV cache. Trained on the TinyStories dataset, the model is capable of generating short, coherent stories.'
+          }
+          img={'/static/images/llama3.webp'}
+          stack={[
+            { icon: 'python', name: 'Python' },
+            { icon: 'pytorch', name: 'PyTorch' },
+          ]}
+        />
       </div>
     </>
   )
