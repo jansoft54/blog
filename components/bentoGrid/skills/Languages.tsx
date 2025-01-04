@@ -29,7 +29,7 @@ export default function Database() {
         <TechIcon icon={'python'} headline={'Python'} desc={''} />
         <TechIcon icon={'java'} headline={'Java'} desc={''} />
         <TechIcon icon={'go'} headline={'Go'} desc={''} />
-        <TechIcon icon={'c++'} headline={'C++'} desc={''} />
+        <TechIcon icon={'c++'} headline={'C/C++'} desc={''} />
       </Col>
     </TitleCard>
   )

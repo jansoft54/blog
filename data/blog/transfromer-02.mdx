@@ -1037,4 +1037,286 @@ class MultiHeadGQAttention(nn.Module):
         return output
 ```
 
+As we can see, this is standard functionality, with most parts being identical to the standard attention layer used in a decoder-only Transformer. However, the first difference arises in the weight matrices for $$ Q $$, $$ K $$, and $$ V $$. Specifically, we choose $$ K $$ and $$ V $$ to have dimensions $$\frac{\text{d\_model}}{\text{group\_size}} $$, where $$\frac{\text{d\_model}}{\text{group\_size}} = \text{heads}_{kv} $$.
+
+In the $$\texttt{forward}$$ method, we use a standard reshaping mechanism to ensure that the resulting tensors for $$ Q $$, $$ K $$, and $$ V $$ have the shape $$\text{seq\_len} \times d\_{\text{head}} $$.
+
+Next, we apply positional encoding to the queries and keys using the previously defined $$\texttt{apply\_rotary\_embedding}$$ function. As mentioned earlier, the $$\texttt{freq\_cis}$$ contain the terms $$ m_j\theta_i$$, where $$m_j$$ represents the positions of the tokens fed into the model. This step is crucial, especially during **inference**, as the entire sequence of tokens is not fed into the model repeatedly. We will delve into this aspect in more detail later.
+
+Following this, we perform the now well-known attention operation between the encoded $$\textbf{queries}$$, $$\textbf{keys}$$, and the plain $$\textbf{values}$$. Additionally, there is an optional function called $$\texttt{scaled\_dot\_product\_attention}$$. This function provides a hardware- and memory-efficient implementation of the attention operation, commonly referred to as **flash attention**.
+
+We will not go into much detail about flash attention in this post, but we may cover it in another post. For now, it suffices to say that this function implements attention more efficiently in terms of both hardware and memory usage.
+
+Now this already completes the model code of Llama! We will use the following training code, along with the data preparation code from above, to make our tiny model tell us some stories!
+
+```python
+
+warmup = 100
+lr = 1e-4
+min_lr = 7e-5
+
+args = ModelArgs(
+    vocab_size=len(tokenizer),
+    tokenizer=tokenizer,
+    d_model=256,
+    heads=16,
+    group_size=2,
+    num_layers=32,
+    max_seq_len=max_seq_len,
+    use_flash=True,
+)
+
+
+epochs = 2
+
+model = Llama3(args).to(device)
+# model.load_state_dict(torch.load('tiny_stories_2.pth'))
+model = torch.compile(model)
+model.train()
+optim = torch.optim.AdamW(model.parameters(), lr=lr, betas=(0.9, 0.999), weight_decay=0)
+# lr_scheduler = InverseSquareRootLR(optim, warmup, lr, min_lr=min_lr)
+logger.info(
+    f"Param. count: {sum(p.numel() for p in model.parameters() if p.requires_grad)}"
+)
+scaler = torch.GradScaler()
+
+for epoch in range(epochs):
+    for i, batch in enumerate(dataloader):
+
+        inputs = batch["input_ids"].to(device)
+        labels = batch["labels"].to(device)
+        attention_mask = batch["attention_mask"].to(device)
+
+        optim.zero_grad()
+
+        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+            loss = model(inputs, attention_mask, labels)
+
+        scaler.scale(loss).backward()
+
+        scaler.unscale_(optim)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
+        scaler.step(optim)
+        scaler.update()
+        # lr_scheduler.step()
+
+        logger.info(
+            f"Epoch [{epoch+1}/{epochs}], Step [{i+1}/{len(dataloader)}], Loss: {loss.item():.4f}"
+        )
+        if (i + 1) % 1000 == 0:
+            torch.save(model._orig_mod.state_dict(), "tiny_stories_50M.pth")
+```
+
+As you can see, there is nothing special about this code. We set up our optimizer, compile our Llama3 model, and feed the inputs and labels, such as the attention mask, into the model. Additionally, we use the $$\texttt{torch.amp} $$ package, which provides methods for implementing mixed-precision training.
+
+Now that we have set up our training code, trained, and subsequently saved our model to $$\texttt{tiny\_stories\_50M.pth}$$, we can actually use this model to sample some stories from it. So let's do that!
+
 # Optimizing Inference - The KV-Cache
+
+One of the most important optimizations that Llama has introduced in their architecture is the so-called
+**key-value cache**. The purpose of this becomes clear if we look at the figure below:
+
+<figure style={{ width: '100%', margin: 'auto', paddingLeft: '10%' }}>
+  <img
+    id="rope"
+    src="/static/images/blog/transformers02/kv_cache.gif"
+    alt="Description of the image"
+    style={{ width: '80%', height: 'auto' }}
+  />
+</figure>
+
+As you know, during inference we sample the next token and append it to the sequence before we
+feed this new sequence into the transformer to predict the next token. But as you can see in the figure,
+to predict **token 5**, we only need **query token 4** to multiply with the **keys**. This means to predict
+**token 5**, we only need the last row of the attention matrix. Thus, instead of feeding in the entire
+sequence of tokens of length $$n$$ to predict $$n+1$$, we just feed in the $$n$$-th token. For the
+attention and subsequent multiplication with $$V$$, however, we still need the previous tokens.
+This is exactly where the **key-value cache (kv-cache)** comes in.
+
+<figure style={{ width: '100%', margin: 'auto', paddingLeft: '10%' }}>
+  <img
+    id="rope"
+    src="/static/images/blog/transformers02/kv_cache02.png"
+    alt="Description of the kv-cache mechanism"
+    style={{ width: '80%', height: 'auto' }}
+  />
+</figure>
+
+For every token we see, we save it in the **kv-cache** for later usage in the multiplications.
+By doing this, we can save a significant amount of attention multiplications, as we only need to compute
+the last row of the attention matrix! Nice!
+
+Now lets look at the code for the KV-Cache:
+
+```python
+class KV_Cache(nn.Module):
+    def __init__(self, batch_size, seq_length, n_kv_heads, head_dim):
+        super(KV_Cache, self).__init__()
+        device = "cuda"
+        cache_shape = (batch_size, seq_length, n_kv_heads, head_dim)
+        self.cache_k = torch.zeros(cache_shape, device=device)
+        self.cache_v = torch.zeros(cache_shape, device=device)
+
+    def update(self, xk, xv, pos):
+        bx, seq_len = xk.shape[:2]
+        self.cache_k[:bx, pos : pos + seq_len] = xk
+        self.cache_v[:bx, pos : pos + seq_len] = xv
+        return self.cache_k[:bx, : pos + seq_len], self.cache_v[:bx, : pos + seq_len]
+
+```
+
+Here we reserve as much space as we could possibly need by constructing a zero tensor of shape
+`(batch_size, max_seq_length, n_kv_heads, head_dim)`. Then, during the update, we pass in the current token
+position and save the keys and values into the cache before returning all the cached values up to the current
+point in time.
+
+Here is how we will use it in the $$\texttt{MultiHeadGQAttention}$$ class:
+
+```python
+class MultiHeadGQAttention(nn.Module):
+    flash = False
+    def __init__(self, heads=4, d_model=256, group_size=2, max_seq_len=256):
+        super(MultiHeadGQAttention, self).__init__()
+        (...)
+        self.kv_cache = KV_Cache(
+            batch_size=4,
+            seq_length=max_seq_len,
+            n_kv_heads=self.heads // self.group_size,
+            head_dim=d_model // heads,
+        )
+
+    def __repeat_kv(self, x):
+        bs, slen, n_kv_heads, head_dim = x.shape
+        return (
+            x[:, :, :, None, :]
+            .expand(bs, slen, n_kv_heads, self.group_size, head_dim)
+            .reshape(bs, slen, n_kv_heads * self.group_size, head_dim)
+        )
+    def forward(
+        self,
+        q,
+        k,
+        v,
+        mask,
+        freq_cis,
+        position=-1,
+    ):
+        (...)
+        q = RoPE.apply_rotary_embedding(q, freq_cis)
+        k = RoPE.apply_rotary_embedding(k, freq_cis)
+        if not self.training:
+            k, v = self.kv_cache.update(k, v, position)
+
+        k = self.__repeat_kv(k)
+        v = self.__repeat_kv(v)
+        (...)
+```
+
+As you can see, we will store the **keys** and **values** in the cache _after_ we positional encoded them.
+Now lets look at the $$\texttt{generate\_kv}$$ function, that actually handles sampling from the model,
+utilizing the **kv-cache**:
+
+```python
+ def generate_kv(self, prompt, tokenizer, temp=1.0, top_p=None):
+        device = "cuda"
+        tokenized = tokenizer(prompt, max_length=self.max_seq_len, truncation=True)
+        tokens = torch.tensor(tokenized["input_ids"]).unsqueeze(0).to(device)
+        sampled_token = None
+        sampled_tokens = tokens.squeeze(0).tolist()
+
+        token_len = tokens.shape[1]
+
+        mask = (
+            torch.tril(torch.ones(token_len, token_len, dtype=torch.bool))
+            .unsqueeze(0)
+            .to(device)
+        )
+        i = 0
+        for block in self.layers:
+            block.attention.cache = KV_Cache(
+                batch_size=1,
+                seq_length=self.max_seq_len,
+                n_kv_heads=self.heads // self.group_size,
+                head_dim=self.d_model // self.heads,
+            )
+        while i < self.max_seq_len:
+
+            logits = self.__run_model(tokens, mask, position=i)[:, -1, :] / temp
+            probabilities = F.softmax(logits.float(), dim=-1).squeeze()
+            if top_p is not None:
+                sorted_probs, sorted_indices = torch.sort(
+                    probabilities, descending=True
+                )
+                cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
+                cutoff_index = torch.searchsorted(cumulative_probs, top_p, right=True)
+
+                sorted_probs[cutoff_index + 1 :] = 0
+                sorted_probs = sorted_probs / sorted_probs.sum()
+                probabilities = torch.zeros_like(probabilities).scatter(
+                    0, sorted_indices, sorted_probs
+                )
+
+                sampled_token = torch.multinomial(probabilities, num_samples=1)
+            else:
+                sampled_token = torch.multinomial(probabilities, num_samples=1)
+
+            tokens = sampled_token.unsqueeze(0)
+            if sampled_token.item() != tokenizer.eos_token_id:
+                sampled_tokens.append(sampled_token.item())
+            else:
+                break
+            i = len(sampled_tokens)
+            mask = None
+
+        return tokenizer.decode(sampled_tokens)
+```
+
+Now this function takes in a prompt like: `Once a little green car`. We then tokenize this sequence and create a causal mask. Next, we initialize the KV-Cache for each attention layer. The generation process then begins and ends either if
+we exceed the `max_length` or if the special EOS token appears.
+
+For sampling, we have two distinct strategies. The first one is **temperature sampling**, and the second is **top-p** sampling. Using temperature sampling, we divide the logits by the temperature variable. If the temperature is below 1, this sharpens the probability distribution after applying the softmax. A temperature greater than 1 has the opposite effect, leading to a more spread-out distribution and making previously less likely tokens more likely.
+**Top-p sampling** will only consider the most likely tokens whose cumulative probability sum is less than or equal to $$p$$. Typical values for $$p$$ are $$0.8$$ or $$0.9$$.
+
+Now using this code we can sample from the model like this:
+
+```python
+import torch
+from model import Llama3, ModelArgs
+from transformers import GPT2TokenizerFast
+from colorama import Fore, Back, Style, init
+init()
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
+tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+max_seq_len = 256
+
+args = ModelArgs(
+    vocab_size=len(tokenizer),
+    tokenizer=tokenizer,
+    d_model=256,
+    heads=4,
+    group_size=2,
+    num_layers=32,
+    max_seq_len=max_seq_len,
+    use_flash=True,
+)
+model = Llama3.from_pretrained("tiny_stories_50M.pth", args).to(device)
+model.eval()
+
+res = model.generate_kv("There once a little green car called Beep", tokenizer=tokenizer, top_p=0.65)
+
+print(Fore.GREEN + res)
+```
+
+Running this will print:
+
+_**There once a little green car called Beep**. Beep loved to drive around the town, but one day it got lost. Beep drove around looking for its way back, but it couldn't find its way back. Beep was so sad and started to cry.
+Suddenly, Beep saw a big green truck. The truck said, "Don't worry Beep. I will help you find your way home." Beep was so happy and the truck said, "Let's go! I know the way!"
+So Beep and the truck drove together, until they reached the other side of the town. When they arrived, Beep said, "Thank you for helping me. You're a good friend." The truck said, "You're welcome. It was nice to help."
+Wep drove back home, feeling happy and relieved. It knew that the green truck was right. Beep and the truck were friends forever._
+
+As you can see, this is already a pretty good story! Our model currently has about 50 million parameters and was trained on the TinyStories dataset for just one epoch. Due to the limitations of my GPU, which has only 8GB of VRAM, I had to use a smaller batch size. While this increases training times, I am planning to upgrade my hardware in the near future!
+
+The complete code will be updated and made available on my GitHub page. This concludes my post about LLaMA3, and I hope you found it an enjoyable and informative read. If you spot any mistakes or have suggestions, please feel free to reach out to me!
