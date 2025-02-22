@@ -118,7 +118,7 @@ Although the precise role of $$\alpha$$ is not fully understood yet, it generall
 ## QLoRA (Quantized Low-Rank Adaption) {<a name="qlora" />}
 
 _QLoRA_ builds upon the concepts of LoRA but incorporates advanced quantization techniques to significantly reduce the memory footprint of fine-tuning. By leveraging low-bit precision representations, QLoRA enables efficient adaptation of large language models while maintaining high performance.
-To achieve this, _QLoRA_ introduces the following three key concepts, with the first two focusing on weight quantization.
+To achieve this, _QLoRA_ introduces the following key concepts, with the first two focusing on weight quantization.
 
 ### NF4 (4-bit NormalFloat) Quantization
 
@@ -151,7 +151,7 @@ where each index is stored as a **2-bit integer**. The calculated centroids, how
 
 The problem with this, however, is that the calculation of the quantiles can be very computationally intensive. While there have been proposed algorithms to approximate quantiles, they often incur high quantization errors when encountering outliers.
 
-With _4NF_, however, we exploit the property of weight distributions, which are often normally distributed with mean $$0$$ when training neural networks. What we will do now is calculate the $$2^k + 1$$ quantiles of a normal distribution $$N(0, 1)$$. We will do this by utilizing the formula
+With _NF4_, however, we exploit the property of weight distributions, which are often normally distributed with mean $$0$$ when training neural networks. What we will do now is calculate the $$2^k + 1$$ quantiles of a normal distribution $$N(0, 1)$$. We will do this by utilizing the formula
 
 $$
 q_i = \frac{1}{2} \biggl( Q_X\Bigl(\frac{i}{2^k + 1}\Bigr) \;+\; Q_X\Bigl(\frac{i + 1}{2^k + 1}\Bigr) \biggr), \quad i \in [2^k-1],
