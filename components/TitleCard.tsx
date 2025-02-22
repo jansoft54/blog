@@ -1,35 +1,31 @@
-'use client'
-
 import clsx from 'clsx'
 import React from 'react'
-import { motion } from 'framer-motion'
-import { MotionProps } from 'framer-motion'
 
-const TitleCard = ({
-  title,
-  children,
-  className,
-  animProps,
-}: {
+interface TitleCardProps {
   title: string
   children: React.ReactNode
-  className: string
-  animProps?: MotionProps
-}) => {
-  return (
-    <motion.div
-      className={clsx(
-        'cursor-pointer  rounded-2xl p-6 shadow-lg duration-500 hover:scale-105 dark:bg-zinc-900 xl:mb-6',
-        className
-      )}
-      {...{ animProps }}
-    >
-      <h2 className="mb-2 border-b-[1px] border-gray-200 pb-2 text-xl font-bold text-primary-500 dark:border-gray-700">
-        {title}
-      </h2>
-      <div className="mt-2">{children}</div>
-    </motion.div>
-  )
+  className?: string
 }
+
+const TitleCard = React.forwardRef<HTMLDivElement, TitleCardProps>(
+  ({ title, children, className }, ref) => {
+    return (
+      <div
+        ref={ref}
+        className={clsx(
+          'cursor-pointer rounded-2xl p-6 shadow-lg duration-500 hover:scale-105 dark:bg-zinc-900 xl:mb-6',
+          className
+        )}
+      >
+        <h2 className="mb-2 border-b-[1px] border-gray-200 pb-2 text-xl font-bold text-primary-500 dark:border-gray-700">
+          {title}
+        </h2>
+        <div className="mt-2">{children}</div>
+      </div>
+    )
+  }
+)
+
+TitleCard.displayName = 'TitleCard'
 
 export default TitleCard

@@ -17,22 +17,21 @@ module.exports = {
     extend: {
       animation: {
         heightGrow: 'heightGrow 2s linear forwards',
-        fade: 'fadeIn .5s ease-in-out forwards',
+        expand: 'expand 1s linear forwards',
+        fadeIn: 'fadeIn 0.4s ease-in forwards',
       },
       keyframes: {
+        expand: {
+          '0%': { height: '0%' },
+          '100%': { height: '100%' },
+        },
         heightGrow: {
           '0%': { height: '0', opacity: '0' },
           '100%': { height: '100%', opacity: '1' }, // Set desired final height
         },
         fadeIn: {
-          '0%': {
-            opacity: 0,
-            transform: 'translateY(20px)',
-          },
-          '100%': {
-            opacity: 1,
-            transform: 'translateY(0)',
-          },
+          '0%': { opacity: 0, transform: 'translateY(30%)' },
+          '100%': { opacity: 1, transform: 'translateY(0)' },
         },
       },
       lineHeight: {
