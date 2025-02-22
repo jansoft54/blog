@@ -9,20 +9,7 @@ import { useMediaQuery } from '@/components/util/util'
 export default function Frontend() {
   const isMobile = useMediaQuery('(max-width: 768px)')
   return (
-    <TitleCard
-      title="Frontend"
-      className={' z-0 col-span-1 row-span-1 h-full'}
-      animProps={
-        !isMobile
-          ? {
-              initial: { x: '100%', opacity: 0 },
-              whileInView: { x: 0, opacity: 1 },
-              viewport: { once: true, amount: 0.3 },
-              transition: { duration: 0.5, delay: 0.5, ease: 'easeIn' },
-            }
-          : {}
-      }
-    >
+    <TitleCard title="Frontend" className={' z-0 col-span-1 row-span-1 h-full'}>
       <Col className="flex-wrap gap-3">
         <TechIcon
           icon={'reactjs'}
