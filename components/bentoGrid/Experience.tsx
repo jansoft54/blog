@@ -37,14 +37,34 @@ export default function Experience() {
       title="Experience doing stuff"
       className="col-span-2 row-span-1 h-full"
     >
-      <Col className={`relative gap-6 dark:text-gray-400 `}>
+      <Col className={`relative gap-6 dark:text-gray-400 xl:w-8/12`}>
+        <Col className={`${fadeInClass(1450)}`}>
+          <Row className="items-start justify-start gap-4">
+            <div className="flex w-16 shrink-0 justify-center rounded">
+              <img className="rounded-md p-3" src="/static/images/comma.jpeg" alt="bwi" />
+            </div>
+            <Col>
+              <strong className="dark:text-white">
+                ML-Engineer, Working Student, CommaSoft AG
+              </strong>
+              <div className="">
+                Responsible for fine-tuning, benchmarking, and deploying open-source models to
+                develop a custom, private LLM solution —{'  '}
+                <a href="https://alan.de/" className=" whitespace-nowrap text-primary-500">
+                  Alan LLM
+                </a>
+                .
+              </div>
+            </Col>
+          </Row>
+        </Col>
         <Col className={`${fadeInClass(1250)}`}>
           <Row className="items-start justify-start gap-4">
             <div className="flex w-16 shrink-0 justify-center">
-              <img className="p-1" src="/static/images/bwi.png" alt="bwi" />
+              <img className="rounded-md p-1" src="/static/images/bwi.png" alt="bwi" />
             </div>
             <Col>
-              <strong className="dark:text-white">Working Student, BWI GmbH</strong>
+              <strong className="dark:text-white">Software Dev, Working Student, BWI GmbH</strong>
               Focused on the development of a secure messenger based on the Matrix protocol
             </Col>
           </Row>
@@ -74,7 +94,7 @@ export default function Experience() {
         <Col className={`${fadeInClass(750)}`}>
           <Row className="items-start justify-start gap-4">
             <div className="flex w-16 shrink-0 justify-center">
-              <img className="p-3" src="/static/images/cebicon.jpeg" alt="craftone" />
+              <img className="rounded-md p-3" src="/static/images/cebicon.jpeg" alt="craftone" />
             </div>
             <Col>
               <strong className="dark:text-white">Internship, CebiCon GmbH</strong>

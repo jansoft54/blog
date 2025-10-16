@@ -13,7 +13,7 @@ const TitleCard = React.forwardRef<HTMLDivElement, TitleCardProps>(
       <div
         ref={ref}
         className={clsx(
-          'cursor-pointer rounded-2xl p-6 shadow-lg duration-500 hover:scale-105 dark:bg-zinc-900 xl:mb-6',
+          'cursor-pointer rounded-2xl p-6 shadow-lg duration-500 hover:scale-105 dark:bg-zinc-900 ',
           className
         )}
       >

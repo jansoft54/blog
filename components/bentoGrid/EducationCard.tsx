@@ -51,7 +51,7 @@ export default function EducationCard() {
           </div>
           <div className={`flex flex-col ${fadeInClass(1250)}`}>
             <strong className="dark:text-white">10.2024 - present</strong>
-            M.Sc. in Computer Science, University of Bonn
+            M.Sc. in Computer Science, University of Bonn - Intelligent Systems / Algorithmics
             <ul className="list-circle italic">
               <li>Expected graduation: Autumn 2026</li>
             </ul>

@@ -81,8 +81,8 @@ const PersonIntroCard = ({ className, animProps }) => {
           <Row className="pl-3">
             <Row className="items-center gap-2">
               <BriefcaseBusiness strokeWidth={1.5} />
-              <a href="https://www.bwi.de/" className="text-sm text-primary-500">
-                @BWI
+              <a href="https://comma-soft.com/" className="text-sm text-primary-500">
+                @CommaSoft
               </a>
             </Row>
           </Row>

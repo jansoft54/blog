@@ -1,0 +1,459 @@
+---
+title: Towards DeepSeek - Introduction to DeepSeek-V3-Base
+date: '2025-03-28'
+tags: ['math', 'nlp', 'deepseek']
+draft: false
+summary: In this post, I aim to provide an introduction to the architectural innovations—particularly the Mixture of Experts (MoE)—pioneered by DeepSeek in their V3-Base model, which laid the foundation for their state-of-the-art reasoning model, R1.
+---
+
+Lately, **DeepSeek AI**, which is a spin-off from a hedge fund (DeepSeek Capital), has disrupted the LLM landscape with the release of **DeepSeek-R1**, an open-source state-of-the-art reasoning model. Remarkably, its performance is comparable to OpenAI’s **o1**, yet DeepSeek claims to have trained it for only **$5 million**, a surprisingly low figure for such an advanced model.
+
+Their success stems from key innovations in the widely used Mixture of Experts (MoE) Transformer architecture, alongside a novel reinforcement learning technique called Group Relative Policy Optimization (GRPO), which enables end-to-end learning of the reasoning process, leading to cutting-edge results in complex tasks.
+
+<figure style={{ width: '80%', margin: 'auto', paddingLeft: '0%' }}>
+  <img
+    id="lora"
+    src="/static/images/blog/ds-00/dsv3.avif"
+    alt="Description of the image"
+    style={{ width: '100%', height: 'auto' }}
+  />
+  <figcaption style={{ textAlign: 'center', fontSize: '0.9rem', color: '#666' }}>
+    <a target="_blank" rel="noopener noreferrer" href="https://arxiv.org/pdf/2305.14314">
+      Image source
+    </a>
+  </figcaption>
+</figure>
+
+In this post, we will cover the main architectural aspects of the [DeepSeek-V3-Base Technical Report](https://arxiv.org/pdf/2412.19437v1), which describes the base model that is later used to train **R1-Zero** and **R1** using **GRPO**.
+
+For now, we will concentrate on the architectural innovations that DeepSeek achieved in their MoE base model, which we can summarize in three steps:
+
+- **DeepSeekMoE:** Introducing a new approach for the Mixture of Experts model in conjunction with a method for Auxiliary-Loss-Free Load Balancing.
+- **MLA (Multi-Head Latent Attention):** A nearly loss-free alternative to GQA.
+- **Multi Token Prediction:** Enhancing training efficiency by predicting multiple tokens simultaneously.
+
+# Prerequisites
+
+To understand the innovations in the MoE setting and Multi-Head Latent Attention (MLA), we will quickly (re)introduce both of them.
+
+## Mixture of Experts (MoE)
+
+In our standard transformer block, recall that the FFN layer follows the RMSNorm of the MHA layer. The MoE architecture—which gained wide popularity after its use in [GShard](https://arxiv.org/abs/2006.16668)—replaces precisely this layer in a decoder block. The overall idea is to replace the large FFN with multiple smaller FFNs, called **experts**, each of which processes tokens based on a learned probability distribution. The network that generates this distribution is known as the **router**.
+
+<figure style={{ width: '80%', margin: 'auto', paddingLeft: '0%' }}>
+  <div className="flex justify-center">
+    <img
+      id="moe"
+      src="/static/images/blog/ds-00/moe.webp"
+      alt="Description of the image"
+      style={{ width: '70%', height: 'auto' }}
+    />
+  </div>
+  <figcaption style={{ textAlign: 'center', fontSize: '0.9rem', color: '#666' }}>
+    <a
+      target="_blank"
+      rel="noopener noreferrer"
+      href="https://newsletter.maartengrootendorst.com/p/a-visual-guide-to-mixture-of-experts"
+    >
+      Image source
+    </a>
+  </figcaption>
+</figure>
+Mathematically, this can be expressed as follows:  
+Let $$s$$ and $$d$$ denote the _sequence length_ and _hidden dimension_, respectively.  
+We consider a set of experts $$\forall i \in \{1,\dots,n\}: f_i: \mathbb{R}^{d} \to \mathbb{R}^{d}$$ and  
+a gating (routing) function $$w:\mathbb{R}^{d} \to \mathbb{R}^{n}$$.  
+Then, for each token embedding $$x_j \in \mathbb{R}^{d}$$,  
+the output of the Mixture of Experts layer is computed as a weighted sum of the expert outputs:
+$$
+\text{MoE}(x_j) = \sum_{i=1}^{n} w(x_j)_{i} \cdot f_i(x_j),
+\quad \forall j \in \{1,\dots,s\}.
+$$
+Aggregating over the sequence, we obtain  
+$$
+\text{MoE}(x) = [\,\text{MoE}(x_1);\, \text{MoE}(x_2);\, \dots;\, \text{MoE}(x_s)\,]
+\in \mathbb{R}^{s \times d}.
+$$
+
+where $$w(x)_{ji}$$ denotes the gating weight corresponding to expert $$f_i$$, with $$\sum_{i=1}^{n} w(x)_{ji} = 1 \quad \forall j \in \{1,\dots,s\}$$. The reason this architecture has gained so much traction is that if $$w(x)$$ is sparse, only a small subset of experts will ever be active at once. Consequently, we can scale the parameter count to trillions while only activating a small subset at any given time, thereby reducing memory requirements. This approach leverages the network’s ability to learn which subset of experts to use in a given context without having to evaluate a massive dense network.
+
+In practice, our gating function $$w$$ is also modeled via an FFN.
+
+### Top-K Sampling
+
+To make the vector $$w(x)_i$$ sparse, both [GShard](https://arxiv.org/abs/2006.16668) and [Switch Transformer](https://arxiv.org/abs/2101.03961) have popularized the method of top-$$K$$ sampling. Instead of summing over all the weighted expert outputs, we only keep the $$K$$ highest values for any given $$w(x)_j$$ and disregard the values of the other experts. _Switch Transformer_ pushed this to its
+limits by setting $$K=1$$, which was previously thought to be infeasible.
+Mathematically we can overall express this as:
+
+$$
+\begin{align}
+h_j &= \sum_{i=1}^{N} \left( g_{j,i}\,\mathrm{FFN}_i\left(x_j\right) \right) + x_j,  \\
+g_{j,i} &=
+\begin{cases}
+s_{j,i}, & \text{if } s_{j,i} \in \mathrm{Topk}\left(\{ s_{j,l} \mid 1 \le l \le n \}, K\right), \\
+0, & \text{otherwise},
+\end{cases}  \\
+s_{j,i} &= \mathrm{Softmax}_i\left(\mathrm{FFN}_{\text{route}}(x_j)\right),
+\end{align}
+$$
+
+where $$h_j$$ is the final output of the decoder block and $$\mathrm{FFN}_{\text{route}}$$ implements the gating network,
+which is often just a simple perceptron.
+
+### Auxiliary Loss & Expert Capacity
+
+When training such MoE models, as described above, we often encounter several issues. One common problem is the over-utilization of one or just a few experts. For example, due to chance during the early stages of training, one expert might yield a slightly lower loss, which causes the gating network to over-rely on that expert. This imbalance means that the other experts receive little to no training, reinforcing the problem and leading to suboptimal overall performance.
+
+The solution to this issue is the introduction of an additional loss term called the **auxiliary loss**. This loss is used to encourage the network to evenly distribute its selections across all experts during training. We define this loss as:
+
+$$
+\mathcal{L}_{\text{aux}} = \alpha \cdot \sum_{i=1}^{E} t_i  p_i,
+$$
+
+where $$t_i$$ is the fraction of tokens routed to expert $$i$$, which the model can influence by adjusting $$p_i$$, the empirical average probability of a token being routed to expert $$i$$. The scaling factor $$\alpha$$ is introduced
+as a hyper-parameter.
+To prevent a single expert from being overloaded, we define an additional hard limit on how many tokens an expert can handle per batch. This limit is called the **expert capacity**. While the exact definition may vary from paper to paper, the one introduced in _Switch Transformer_ is defined as:
+
+$$
+C = \left(\frac{\text{tokens per batch}}{\text{number of experts}}\right) \cdot \text{capacity factor}.
+$$
+
+While tokens that exceed the capacity limit $$ C $$ are often dropped—meaning their computation is skipped and they are passed to a later layer via the skip connection, later methods have experimented with dynamically redistributing those tokens to underutilized experts. Again we introduce the _capacity factor_ as a hyper-parameter.
+
+## DeepSeek-V3-Base Architecture
+
+Now that we have covered the required prerequisites, let's take a closer look at the overall architecture of DeepSeek-V3. We'll begin with the new MoE layer, DeepSeekMoE, which was introduced in our previous [paper](https://arxiv.org/pdf/2401.06066).
+
+### DeepSeekMoE
+
+DeepSeekMoE introduces several changes to the standard MoE architecture. One key innovation is what we call **Fine-Grained Expert Segmentation**. In this approach, the number of experts is increased by a factor of $$m$$, while the hidden dimension of each expert is scaled down by a factor of $$m$$. As a result, the top-$$K$$ selection is adjusted to a new value of $$K' = mK$$.
+
+<figure style={{ width: '100%', margin: 'auto', paddingLeft: '0%' }}>
+  <img
+    id="moe_ds"
+    src="/static/images/blog/ds-00/moe_ds.png"
+    alt="DeepSeekMoE architecture illustration"
+    style={{ width: '100%', height: 'auto' }}
+  />
+  <figcaption style={{ textAlign: 'center', fontSize: '0.9rem', color: '#666' }}>
+    <a href="https://arxiv.org/pdf/2401.06066" target="_blank" rel="noopener noreferrer">
+      Image source
+    </a>
+  </figcaption>
+</figure>
+
+As illustrated above (in part (b)), when we set $$m=2$$ and hence $$K' = 2K$$ (for example, if $$K=2$$ then $$K'=4$$), the rationale is to increase the combinatorial complexity of the activated experts. For instance, with $$N=16$$ experts and a top-2 routing strategy, there are
+
+$$
+\binom{16}{2} = 120
+$$
+
+different combinations of experts. However, if we set $$m=4$$, then the effective number of experts becomes $$16 \times 4 = 64$$, and with a top routing value of $$K' = 8$$, we obtain
+
+$$
+\binom{64}{8} \approx 4.426 \times 10^9
+$$
+
+different combinations of active experts—all while keeping the overall parameter count roughly the same.
+
+Additionally, DeepSeekMoE introduces the concept of **shared experts** (part (c)). The idea is that each expert may need to learn some common knowledge, and if each expert learns it individually, it leads to a lot of redundancy in their parameters. To model this shared information more efficiently, we introduce a set of shared experts whose goal is to capture this common knowledge. This increases parameter efficiency for the remaining experts. For this to work properly, the shared experts are excluded from the routing mechanism so that every token passes through every shared expert.Given that $$N_s$$ denotes the number of shared experts and $$N_r$$ the number of routed experts,
+DeepSeek-V3 expresses it's MoE layer as follows:
+
+$$
+\begin{align}
+h_j &= x_j + \sum_{i=1}^{N_s} \mathrm{FFN}^{(s)}_i(x_j)
++ \sum_{i=1}^{N_r} g_{j,i}\, \mathrm{FFN}^{(r)}_i(x_j), \\[1em]
+g_{j,i} &= \frac{g'_{j,i}}{\sum_{l=1}^{N_r} g'_{j,l}}, \\[1em]
+g'_{j,i} &=
+\begin{cases}
+s_{j,i}, & \text{if } s_{j,i} \in \mathrm{Topk}\Bigl(\{ s_{j,l} \mid 1 \le l \le N_r \},\, K_r\Bigr), \\[1em]
+0, & \text{otherwise},
+\end{cases} \\[1em]
+s_{j,i} &= \mathrm{Sigmoid}\Bigl( x_j^T e_i \Bigr),
+\end{align}
+
+
+
+
+$$
+
+where $$e_i$$ is a weight vector.
+Lastly, DeepSeek‑V3 introduces an **auxiliary-loss-free load balancing** method that ensures an even distribution of expert utilization without adding a separate loss term. In this approach, an additional bias $$b_i$$ is incorporated into the formulation of $$g'_{j,i}$$:
+
+$$
+g'_{j,i} =
+\begin{cases}
+s_{j,i} + b_i, & \text{if } s_{j,i} \in \mathrm{Topk}\Bigl(\{ s_{j,l} \mid 1 \le l \le N_r \},\, K_r\Bigr), \\[1em]
+0, & \text{otherwise}.
+\end{cases}
+$$
+
+The bias $$b_i$$ is then dynamically adjusted during training: it is decreased by $$\gamma$$ if expert $$i$$ is considered overloaded and increased by $$\gamma$$ if it is underloaded. Although the paper does not explicitly specify the criteria for these states, they are likely determined relative to the balanced load, which can be estimated as $$\frac{T}{N_r}$$ (with $$T$$ being the total number of tokens). Although we overall refer to this MoE model as auxiliary-loss-free, the authors introduce an additional loss term, called the **Complementary Sequence-Wise Auxiliary Loss**, which enforces a balanced expert load within each sequence. This is particularly beneficial during inference, as it helps ensure that the experts, and consequently the GPU resources, are evenly distributed.
+
+$$
+\begin{align}
+\mathcal{L}_{\text{CSA}} &= \alpha \cdot \sum_{i=1}^{N_r} f_i \, P_i \\[1em]
+f_i &= \frac{N_r}{K_r}\frac{1}{T} \sum_{t=1}^{T} 1\Bigl\{ s_{t,i} \in \mathrm{Topk}\Bigl(\{ s_{t,l} \mid 1 \le l \le N_r \},\, K_r\Bigr) \Bigr\} \\[1em]
+s'_{t,i} &= \frac{s_{t,i}}{\sum_{j=1}^{N_r} s_{t,j}} \\[1em]
+P_i &= \frac{1}{T} \sum_{t=1}^{T} s'_{t,i},
+\end{align}
+$$
+
+where $$T$$ is the number of tokens in the sequence. We can see that $$f_i$$ represents the fraction of tokens in the sequence routed to expert $$i$$, scaled by the ratio of the total number of routed experts to the number of active experts. This is then weighted by the average probability that an expert is chosen within the sequence and summed over all routed experts. Note that this formulation of the loss is essentially the same as the auxiliary loss, but it uses empirical averages over intra-sequence statistics. To ensure that the influence of this term remains rather small, leaving most of the load balancing work to the bias term, we set
+$$\alpha \ll 1.$$
+
+### KV-Caching
+
+As a refresher we will quickly again cover Key-Value-Caching, which we already covered in a [previous](/blog/transfromer-02) post.
+
+One of the most important optimizations that Llama has introduced in their architecture is the so-called
+**key-value cache**. The purpose of this becomes clear if we look at the figure below:
+
+<figure style={{ width: '100%', margin: 'auto', paddingLeft: '10%' }}>
+  <img
+    id="kv-cache"
+    src="/static/images/blog/transformers02/kv_cache.gif"
+    alt="Description of the image"
+    style={{ width: '80%', height: 'auto' }}
+  />
+    <figcaption style={{ textAlign: 'center', fontSize: '0.9rem', color: '#666' }}>
+<a href="https://medium.com/@joaolages/kv-caching-explained-276520203249" target="_blank" rel="noopener noreferrer">
+Image source{' '}
+</a>
+
+  </figcaption>
+</figure>
+
+As you know, during inference we sample the next token and append it to the sequence before we
+feed this new sequence into the transformer to predict the next token. But as you can see in the figure,
+to predict **token 5**, we only need **query token 4** to multiply with the **keys**. This means to predict
+**token 5**, we only need the last row of the attention matrix. Thus, instead of feeding in the entire
+sequence of tokens of length $$n$$ to predict $$n+1$$, we just feed in the $$n$$-th token. For the
+attention and subsequent multiplication with $$V$$, however, we still need the previous tokens.
+This is exactly where the **key-value cache (kv-cache)** comes in.
+
+<figure style={{ width: '100%', margin: 'auto', paddingLeft: '10%' }}>
+  <img
+    id="rope"
+    src="/static/images/blog/transformers02/kv_cache02.png"
+    alt="Description of the kv-cache mechanism"
+    style={{ width: '80%', height: 'auto' }}
+  />
+   <figcaption style={{ textAlign: 'center', fontSize: '0.9rem', color: '#666' }}>
+<a href="https://developer.nvidia.com/blog/mastering-llm-techniques-inference-optimization/" target="_blank" rel="noopener noreferrer">
+Image source{' '}
+</a>
+
+  </figcaption>
+  </figure>
+
+For every token we see, we save it in the **kv-cache** for later usage in the multiplications.
+By doing this, we can save a significant amount of attention multiplications, as we only need to compute
+the last row of the attention matrix! Nice!
+
+### Multi-Head Latent Attention (MLA)
+
+**Multi-Head Latent Attention** was first introduced by [DeepSeek-V2](https://arxiv.org/pdf/2405.04434) and is a revolutionary approach to drastically reducing the size of the [KV-cache](#kv-cache) during inference. Let's, for example, consider the architecture of DeepSeek-V3 and calculate its memory requirements during inference when using its 100K token context window.
+
+For DeepSeek-V3, we have a head dimension of $$d_h = 128$$, with $$n_h = 128$$ heads per attention layer. In total, there are $$l = 61$$ such layers. If we now use FP16 precision for each weight and our full context window $$n = 10^5$$, we arrive at a KV-cache size of
+
+$$
+\frac{2 \times n \times d_h \times n_h \times l \times 2}{10^9} \approx 400
+$$
+
+This means the size of our KV-cache for a full context window is approximately **400GB**! This is tremendous, and therefore there have been multiple suggestions over the years to save space in the KV-cache. One of these, which found application in the architecture of Llama3, is GQA (Grouped Query Attention), where multiple query heads share a single key and value head, although this comes at the cost of accuracy.
+
+The idea of MLA is now to compress our incoming token embedding $$X \in \mathbb{R}^{s \times d_hn_h}$$,
+where $$s$$ is the sequence length and $$d$$ is the embedding dimension, with a learned weight matrix $$ W^{DKV} \in\mathbb{R}^{ d_c\times d_hn_h}$$, to obtain
+
+$$
+c_t^{KV} =  W^{DKV}h_t,
+$$
+
+where $$ c_t^{KV} \in \mathbb{R}^{s \times d_c}$$ and $$d_c \ll d_hn_h$$ is the compressed latent representation of keys and values of token $$t$$. To obtain our keys and values, we define $$ W^{UK} \in \mathbb{R}^{d_c \times (d_hn_h)}$$ and $$W^{UV} \in \mathbb{R}^{d_c \times (d_hn_h)}$$ which will learn to upscale our compressed representation $$ c_t^{KV} $$
+
+$$
+k_t^C = W^{UK} c_t^{KV} \\
+v_t^C = W^{UV} c_t^{KV} .
+$$
+
+After this, we resume with our standard attention mechanism. Now, before covering the genius of this approach, note that through this low‐rank approximation of the traditional $$ W^K $$ via $$ W^{DKV}W^{UK} $$, we achieve a smaller parameter count because $$ d_c \ll d_hn_h $$. This is very similar to what we do when fine-tuning with LoRA to minimize the number of parameters we have to tune.
+
+One might be tempted to think that we have just traded reduced memory requirements for increased computational demand by introducing two new matrices. However, this is exactly where the ingenuity of MLA lies.
+We only have to learn and store the additional matrices $$W^{UK}$$ and $$W^{UV}$$ during training.
+During inference, however, where the KV-cache normally comes into play, we are able to precompute
+$$W^{UK}W^{DKV}$$ and $$W^{UV}W^{DKV}$$.
+As the following relations hold
+
+$$
+\mathbf{q}_t = W^{Q} \mathbf{h}_t, \quad
+\mathbf{k}_t = W^{UK} c_t^{KV} = W^{UK} ( W^{DKV} \mathbf{h}_t ), \quad
+\mathbf{v}_t = W^{UV} c_t^{KV} = W^{UV} ( W^{DKV} \mathbf{h}_t ).
+$$
+
+From this, we can conclude that the standard attention mechanism will look like
+
+$$
+\mathrm{Attn}(\mathbf{h}_t, H)
+=
+\mathrm{softmax}\!\left(
+\frac{(W^{Q}\mathbf{h}_t)\,(W^{UK} W^{DKV} H)^{\top}}
+{\sqrt{d_h}}
+\right)
+(W^{UV} W^{DKV} H).
+$$
+
+We can rewrite this by regrouping terms of $$W^{Q}$$ and $$W^{UK}$$, resulting in
+
+$$
+\mathrm{Attn}(\mathbf{h}_t, H)
+=
+\mathrm{softmax}\!\left(
+\frac{(W^{Q}(W^{UK})^{\top}\mathbf{h}_t)\,(W^{DKV} H)^{\top}}
+{\sqrt{d_h}}
+\right)
+(W^{UV} W^{DKV} H).
+$$
+
+As we can see, during inference we can precompute
+$$W^{Q}(W^{UK})^{\top} \in \mathbb{R}^{(d_h n_h) \times (d_h n_h)}$$
+for every layer and use the cached $$c^{KV}$$ for the attention calculation,
+thereby **not** incurring any additional computational cost with this approach.
+
+Similarly, we can precompute
+$$W^{O} W^{UV} \in \mathbb{R}^{(d_h n_h) \times (d_h n_h)}.$$
+In **multi-head attention**, we combine the results from all heads and project them using $$W^{O}$$:
+
+$$
+\mathbf{o}_t = W^{O}
+\left(
+\mathrm{softmax}\!\left( \cdots \right)
+(W^{UV} W^{DKV} H)
+\right)
+$$
+
+Using associativity, we finally end up with
+
+$$
+\mathbf{o}_t = (W^{O} W^{UV})
+\left(
+\mathrm{softmax}\!\left( \cdots \right)
+(W^{DKV} H)
+\right)
+$$
+
+However, **DeepSeek-V3-Base** introduces an additional step for the Rotary Positional Embedding.  
+The complete _MLA_ formulation from the paper is given as
+
+$$
+\begin{aligned}
+c_t^{KV} &= W^{DKV} h_t, \\
+[k_{t,1}^{C};\, k_{t,2}^{C};\, \dots;\, k_{t,n_h}^{C}]
+&= k_t^{C} = W^{UK} c_t^{KV}, \\
+k_t^{R} &= \mathrm{RoPE}(W^{KR} h_t), \\
+k_{t,i} &= [k_{t,i}^{C};\, k_t^{R}], \\
+[k_{t,1}^{V};\, k_{t,2}^{V};\, \dots;\, k_{t,n_h}^{V}]
+&= v_t^{C} = W^{UV} c_t^{KV}.
+\end{aligned}
+$$
+
+It is important to note that $$t$$ denotes the index of the _t-th token_ and $$n_h$$ the _number of attention heads_.  
+As we can see, the formulation introduces an additional term $$k_t^{R}$$, which carries the **positional information** of the token at position $$t$$.
+
+Here, $$W^{KR} \in \mathbb{R}^{d_h^{R} \times d}$$ is a projection matrix, where $$d_h^{R}$$ specifies the number of dimensions used to down-project $$h_t$$ before applying the Rotary Positional Embedding (RoPE).  
+Finally, we concatenate $$k_{t,i}^{C}$$ and $$k_t^{R}$$ to form the complete key vector $$k_{t,i}$$ for token $$t$$ and attention head $$i$$. During inference, we only need to store $$c_t^{KV}$$ and $$k_t^{R}$$, both of which are significantly smaller than storing the full key and value vectors for each token at their original embedding dimension.
+
+Additionally they introduce a low-rank compressiion for the queries, which are not stored as the ones for keys and values, but are soley used due to their lower activation memory during training and inference.
+
+$$
+\begin{aligned}
+c_t^{Q} &= W^{DQ} h_t, \\
+[q_{t,1}^{C};\, q_{t,2}^{C};\, \dots;\, q_{t,n_h}^{C}]
+&= q_t^{C} = W^{UQ} c_t^{Q}, \\
+[q_{t,1}^{R};\, q_{t,2}^{R};\, \dots;\, q_{t,n_h}^{R}]
+&= q_t^{R} = \mathrm{RoPE}(W^{QR} c_t^{Q}), \\
+q_{t,i} &= [q_{t,i}^{C};\, q_{t,i}^{R}].
+\end{aligned}
+$$
+
+Again, we introduce a down-projection matrix $$W^{DQ} \in \mathbb{R}^{d_c' \times d}$$,  
+where, as before, $$d_c' \ll (d_h n_h)$$.
+
+When we need $$q_{t,i}^{C}$$ again, we can recompute it via $$W^{UQ} c_t^{Q}$$, with $$W^{UQ} \in \mathbb{R}^{(d_h n_h) \times d_c'}$$.
+
+They further use $$W^{QR} \in \mathbb{R}^{(d_R^h n_h) \times d_c'}$$ to encode the compressed latent representation $$c_t^{Q}$$ using **RoPE**, and finally concatenate both $$q_{t,i}^{C}$$ and $$q_{t,i}^{R}$$ to obtain the complete query vector for token $$t$$ and head $$i$$
+
+$$
+q_{t,i} = [q_{t,i}^{C};\, q_{t,i}^{R}].
+$$
+
+This way, we do not need to store $$q_{t,i}$$ during training but can simply recompute it during the backward pass, thereby saving precious GPU memory.
+
+## Multi-Token Prediction
+
+Another important step in the training of **DeepSeek-V3-Base** was the introduction of **MTP**. Instead of calculating the loss solely by aggregating the _CrossEntropy_ between the predicted token distribution and the ground truth, the model is additionally forced to predict the k-th subsequent tokens. The authors justify this approach by arguing that it may both densify the training signal and help the model better plan the prediction of future tokens.
+
+<figure style={{ width: '100%', margin: 'auto', paddingLeft: '0%' }}>
+  <img
+    id="mtp"
+    src="/static/images/blog/ds-00/mtp.png"
+    alt="Description of the kv-cache mechanism"
+    style={{ width: '100%', height: 'auto',padding:"0" }}
+  />
+   <figcaption style={{ textAlign: 'center', fontSize: '0.9rem', color: '#666' }}>
+<a href="https://arxiv.org/pdf/2412.19437" target="_blank" rel="noopener noreferrer">
+Image source{' '}
+</a>
+
+  </figcaption>
+  </figure>
+Each subsequent token is predicted using an MTP block (see Eq.). 
+These blocks consist of a shared embedding layer and output head from the main model, 
+together with a Transformer block ($$\mathrm{TRM}_k$$) and a linear projection matrix 
+$$M_k \in \mathbb{R}^{d \times 2d}$$. 
+As shown in the figure, we take the output of the $$i$$-th token from the $$(k-1)$$-th MTP block 
+and normalize it using $$\textit{RMSNorm}$$. 
+In addition, we compute the embedding of the $$(i+k)$$-th token using the shared embedding layer. 
+Both representations are then concatenated and projected through $M_k$, yielding
+$$
+h'^{(k)}_{i} = M_{k} \big[ \mathrm{RMSNorm}(h^{(k-1)}_{i});\
+\mathrm{RMSNorm}(\mathrm{Emb}(t_{i+k})) \big].
+$$
+We now use the representations $$h'^{(k)}_{i}$$ as inputs to the Transformer block:
+$$
+h^{(k)}_{1:T-k} = \mathrm{TRM}_k\left(h'^{(k)}_{1:T-k}\right).
+$$
+Note that we only use the original input tokens within the Transformer. 
+As illustrated in the figure, the embeddings of future tokens are computed and incorporated during the concatenation 
+and projection step; however, the Transformer itself operates solely on $$h^{(k)}_{1:T-k}$$.
+
+The output of the Transformer block, $$h^{(k)}_{i}$$, is then fed into the shared output head
+to predict the probability distribution $$P^{(k)}_{i+k+1}$$ for the token $$t_{i+k+1}$$:
+
+$$
+P^{(k)}_{i+k+1} = \mathrm{OutHead}\left(h^{(k)}_{i}\right).
+$$
+
+For the loss calculation, we use the following setup.
+Recall that for the first MTP block ($$k = 1$$), we aim to predict the token $$(i + k + 1)$$.
+Therefore, for the first input token $$t_1$$, the prediction target becomes $$t_3$$.
+Accordingly, the loss formulation for an MTP module is given by
+
+$$
+L^{(k)}_{\mathrm{MTP}}
+= \mathrm{CrossEntropy}\!\left(P^{(k)}_{2+k:T+1},\, t_{2+k:T+1}\right)
+= -\frac{1}{T} \sum_{i=2+k}^{T+1} \log P^{(k)}_{i}[t_i].
+$$
+
+Finally, we average these losses over all prediction depths $D$ and weight them by a scaling factor $\lambda$:
+
+$$
+L_{\mathrm{MTP}} =
+\frac{\lambda}{D}
+\sum_{k=1}^{D}
+L^{(k)}_{\mathrm{MTP}}.
+$$
+
+Note that this entire multi-token prediction procedure is applied solely during training
+to enhance the model's ability to anticipate future tokens.
+During inference, the MTP blocks are not used.

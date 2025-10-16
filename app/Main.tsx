@@ -39,7 +39,7 @@ export default function Home({ posts }) {
       >
         Resume
       </h2>
-      <div className="flex w-full grid-rows-1 flex-col gap-8 xl:grid xl:grid-cols-4">
+      <div className="flex w-full  flex-col gap-6">
         <EducationCard />
         <Experience />
       </div>
@@ -58,6 +58,7 @@ export default function Home({ posts }) {
         <Languages />
         <Cloud />
       </div>
+
       <h2
         id="projects"
         className="mt-4 text-xl font-extrabold leading-9 tracking-tight text-gray-900 dark:text-gray-100 sm:text-xl sm:leading-10 md:text-3xl md:leading-14"

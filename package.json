@@ -22,7 +22,7 @@
     "body-scroll-lock": "^4.0.0-beta.0",
     "clsx": "^2.1.1",
     "contentlayer2": "0.5.3",
-    "esbuild": "0.20.2",
+    "esbuild": "^0.25.10",
     "github-slugger": "^2.0.0",
     "gray-matter": "^4.0.2",
     "hast-util-from-html-isomorphic": "^2.0.0",
@@ -53,7 +53,7 @@
     "unist-util-visit": "^5.0.0"
   },
   "devDependencies": {
-    "@opennextjs/cloudflare": "^0.2.1",
+    "@opennextjs/cloudflare": "^1.9.1",
     "@svgr/webpack": "^8.0.1",
     "@types/mdx": "^2.0.12",
     "@types/react": "^18.2.73",
